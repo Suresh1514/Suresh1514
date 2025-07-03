@@ -6,6 +6,8 @@ import seaborn as sns
 from wordcloud import WordCloud, STOPWORDS
 import re
 
+!pip install matplotlib seaborn wordcloud streamlit pandas numpy
+
 # Set page configuration
 st.set_page_config(
     page_title="Drug Reviews Analysis",

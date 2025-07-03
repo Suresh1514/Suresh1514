@@ -6,8 +6,6 @@ import seaborn as sns
 from wordcloud import WordCloud, STOPWORDS
 import re
 
-!pip install matplotlib 
-
 # Set page configuration
 st.set_page_config(
     page_title="Drug Reviews Analysis",

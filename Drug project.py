@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from wordcloud import WordCloud, STOPWORDS
 import re
-pip install streamlit pandas numpy matplotlib seaborn wordcloud
+
 
 
 

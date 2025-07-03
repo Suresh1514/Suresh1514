@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from wordcloud import WordCloud, STOPWORDS
 import re
+pip install streamlit pandas numpy matplotlib seaborn wordcloud
+
 
 # Set page configuration
 st.set_page_config(

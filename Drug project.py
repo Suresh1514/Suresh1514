@@ -8,6 +8,7 @@ import re
 pip install streamlit pandas numpy matplotlib seaborn wordcloud
 
 
+
 # Set page configuration
 st.set_page_config(
     page_title="Drug Reviews Analysis",

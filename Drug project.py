@@ -7,8 +7,6 @@ from wordcloud import WordCloud, STOPWORDS
 import re
 from textblob import TextBlob  # For sentiment analysis
 
- 
-
 # Set page configuration
 st.set_page_config(
     page_title="Drug Reviews Analysis",

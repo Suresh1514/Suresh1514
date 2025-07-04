@@ -329,7 +329,7 @@ with tab5:
                               filtered_data[filtered_data['sentiment'] == sentiment_choice]['review'])
                 title = f"Word Cloud for {sentiment_choice} Reviews"
             
-            wordcloud = WordCloud(width=800, height=400, background_color='white', 
+            wordcloud = WordCloud(width=800, height=400, background_color='Green', 
                                 stopwords=STOPWORDS, max_words=100, colormap='viridis').generate(text)
             
             fig, ax = plot.subplots(figsize=(10, 5))

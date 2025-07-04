@@ -219,7 +219,7 @@ with tab5:
         st.download_button(
             label="Download CSV",
             data=csv,
-            file_name="C:\\Users\\sures_jp6cuxd\\Desktop\\Drug test Project\\drugsCom_raw (2) (1).xlsx",
+            file_name=""drugsCom_raw.xlsx",
             mime="text/csv"
         )
 

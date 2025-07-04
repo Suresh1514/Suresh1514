@@ -214,13 +214,13 @@ with tab5:
     st.dataframe(filtered_data)
     
     st.subheader("Export Data")
-    if st.button("Download Filtered Data as CSV"):
+    if st.button("Download Filtered Data as Excel"):
         csv = filtered_data.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="Download CSV",
             data=csv,
-            file_name=""drugsCom_raw.xlsx",
-            mime="text/csv"
+            file_name="drugsCom_raw.xlsx",
+            mime="text/Excel"
         )
 
 # Add some space at the bottom

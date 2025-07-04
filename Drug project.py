@@ -375,6 +375,27 @@ with tab6:
             mime="text/csv"
         )
 
+print("\n Top 20 Most Reviewed Drugs:")
+print(data['drugName'].value_counts().head(20))
+
+# Count how many unique drugs exist
+print(f"\nTotal unique drugs: {data['drugName'].nunique()}")
+
+# 2. Class distribution of target variable (condition)
+print("\n Distribution of Conditions:")
+print(data['condition'].value_counts())
+
+#  Plot class imbalance
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(8, 5))
+sns.countplot(data=data, x='condition', palette='Set2')
+plt.title('Condition Class Distribution')
+plt.xlabel('Condition')
+plt.ylabel('Count')
+plt.show()
+
 # Add some space at the bottom
 st.markdown("---")
 st.markdown("""

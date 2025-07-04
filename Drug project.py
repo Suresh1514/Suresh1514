@@ -231,7 +231,7 @@ st.markdown("""
 
 # Add requirements.txt for deployment
 st.sidebar.markdown("""
-**Deployment Requirements.txt:**
+**Deployment requirements.txt:**
 streamlit
 pandas
 numpy

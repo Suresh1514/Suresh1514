@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-conda install metplotlib as plt
+import matplotlib.pyplot as plot
 import seaborn as sns
 from wordcloud import WordCloud, STOPWORDS
 import re

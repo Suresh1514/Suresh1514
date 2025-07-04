@@ -5,8 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from wordcloud import WordCloud, STOPWORDS
 import re
-from textblob import TextBlob # For sentiment analysis
-
+from textblob import TextBlob  # For sentiment analysis
 
 # Set page configuration
 st.set_page_config(
@@ -19,16 +18,15 @@ st.set_page_config(
 # Load data function with caching
 @st.cache_data
 def load_data():
-   
     try:
-        data = pd.read_Excel("C:\\Users\\sures_jp6cuxd\\Desktop\\Drug test Project\\drugsCom_raw (2) (1).xlsx") 
-    except:
-        # Fallback sample data if real data not found   
-        st.warning("Using sample data as the real dataset wasn't found")
+        # Use pd.read_excel() for Excel files
+        data = pd.read_excel("drugsCom_raw (2) (1).xlsx") 
+    except Exception as e:
+        st.warning(f"Using sample data as the real dataset wasn't found. Error: {e}")
         data = pd.DataFrame({
             'drugName': ['Prozac', 'Lisinopril', 'Metformin', 'Zoloft', 'Amlodipine'],
             'condition': ['Depression', 'High Blood Pressure', 'Diabetes, Type 2', 
-                         'Depression', 'High Blood Pressure'],
+                        'Depression', 'High Blood Pressure'],
             'review': ["This medication changed my life!", 
                       "Helped lower my blood pressure but caused dizziness",
                       "Effective for sugar control but upset my stomach",
@@ -40,11 +38,12 @@ def load_data():
             'usefulCount': [45, 32, 28, 19, 37]
         })
     
-    # Filter for only the conditions we're focusing on
+    # Filter for target conditions
     target_conditions = ['Depression', 'High Blood Pressure', 'Diabetes, Type 2']
     data = data[data['condition'].isin(target_conditions)]
     
     return data
+
 
 # Sentiment analysis function
 def analyze_sentiment(text):

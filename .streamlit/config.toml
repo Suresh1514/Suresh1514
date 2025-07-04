@@ -2,3 +2,6 @@
 headless = true
 port = 8501
 enableCORS = false
+
+[debug]
+always_show_requirements = true

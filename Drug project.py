@@ -21,7 +21,7 @@ st.set_page_config(
 def load_data():
     try:
         # Use pd.read_excel() for Excel files
-        data = pd.read_excel("drugsCom_raw (2) (1).xlsx") 
+        data = pd.read_excel("drugsCom_raw.xlsx") 
     except Exception as e:
         st.warning(f"Using sample data as the real dataset wasn't found. Error: {e}")
         data = pd.DataFrame({

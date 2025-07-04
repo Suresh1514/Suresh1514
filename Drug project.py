@@ -251,7 +251,7 @@ with tab3:
             examples = sentiment_reviews.sample(min(5, len(sentiment_reviews)))
             for i, example in enumerate(examples, 1):
                 st.markdown(f"""
-                <div style="background-color:#f0f2f6; padding:10px; border-radius:5px; margin-bottom:10px;">
+                <div style="background-color:#d8dde6; padding:10px; border-radius:5px; margin-bottom:10px;">
                 <b>Example {i}:</b> {example}
                 </div>
                 """, unsafe_allow_html=True)

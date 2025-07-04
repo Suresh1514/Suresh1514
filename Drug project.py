@@ -7,7 +7,7 @@ from wordcloud import WordCloud, STOPWORDS
 import re
 from textblob import TextBlob # For sentiment analysis
 
-   import matplotlib.pyplot as plt
+
 except ImportError:
     import subprocess
     subprocess.run(['pip', 'install', 'matplotlib'])

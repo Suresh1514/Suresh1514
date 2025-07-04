@@ -389,12 +389,12 @@ print(data['condition'].value_counts())
 import seaborn as sns
 import matplotlib.pyplot as plot
 
-plt.figure(figsize=(8, 5))
+plot.figure(figsize=(8, 5))
 sns.countplot(data=data, x='condition', palette='Set2')
-plt.title('Condition Class Distribution')
-plt.xlabel('Condition')
-plt.ylabel('Count')
-plt.show()
+plot.title('Condition Class Distribution')
+plot.xlabel('Condition')
+plot.ylabel('Count')
+plot.show()
 
 # Add some space at the bottom
 st.markdown("---")

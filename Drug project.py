@@ -7,6 +7,35 @@ from wordcloud import WordCloud, STOPWORDS
 import re
 from textblob import TextBlob  # For sentiment analysis
 
+import streamlit as st
+
+# Install missing packages automatically
+required_packages = {
+    'pandas': 'pd',
+    'numpy': 'np',
+    'matplotlib.pyplot': 'plt',
+    'seaborn': 'sns',
+    'wordcloud': 'WordCloud',
+    'textblob': 'TextBlob'
+}
+
+for package, alias in required_packages.items():
+    try:
+        globals()[alias] = __import__(package.split('.')[0])
+        if '.' in package:
+            for part in package.split('.')[1:]:
+                globals()[alias] = getattr(globals()[alias], part)
+    except ImportError:
+        import subprocess
+        import sys
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package.split('.')[0]])
+        globals()[alias] = __import__(package.split('.')[0])
+        if '.' in package:
+            for part in package.split('.')[1:]:
+                globals()[alias] = getattr(globals()[alias], part)
+
+import re
+
 # Set page configuration
 st.set_page_config(
     page_title="Drug Reviews Analysis",

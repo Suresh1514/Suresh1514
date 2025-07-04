@@ -403,15 +403,4 @@ st.markdown("""
 The sentiment analysis categorizes reviews into five categories for more nuanced understanding.
 """)
 
-# Add requirements.txt for deployment
-st.sidebar.markdown("""
-**Deployment requirements.txt:**
-streamlit
-pandas
-numpy
-matplotlib
-seaborn
-wordcloud
-textblob
-python-dateutil
-""")
+

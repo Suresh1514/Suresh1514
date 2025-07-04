@@ -133,7 +133,7 @@ with tab2:
     
     with col1:
         st.subheader("Rating Distribution")
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plot.subplots(figsize=(10, 6))
         sns.histplot(filtered_data['rating'], bins=20, kde=True, color='skyblue', ax=ax)
         ax.set_title('Distribution of Ratings')
         ax.set_xlabel('Rating')
@@ -158,7 +158,7 @@ with tab3:
         with col1:
             st.subheader("Sentiment Distribution")
             sentiment_counts = filtered_data['sentiment'].value_counts()
-            fig, ax = plt.subplots()
+            fig, ax = plot.subplots()
             ax.pie(sentiment_counts, labels=sentiment_counts.index, autopct='%1.1f%%')
             st.pyplot(fig)
         
@@ -200,7 +200,7 @@ with tab4:
         wordcloud = WordCloud(width=800, height=400, background_color='white', 
                             stopwords=STOPWORDS, max_words=100).generate(text)
         
-        fig, ax = plt.subplots(figsize=(10, 5))
+        fig, ax = plot.subplots(figsize=(10, 5))
         ax.imshow(wordcloud, interpolation='bilinear')
         ax.axis('off')
         st.pyplot(fig)

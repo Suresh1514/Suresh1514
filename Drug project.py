@@ -26,9 +26,9 @@ st.set_page_config(
 def load_data():
    
     try:
-        data = pd.read_csv("C:\\Users\\sures_jp6cuxd\\Desktop\\Drug test Project\\drugsCom_raw (2) (1).xlsx") 
+        data = pd.read_Excel("C:\\Users\\sures_jp6cuxd\\Desktop\\Drug test Project\\drugsCom_raw (2) (1).xlsx") 
     except:
-        # Fallback sample data if real data not found
+        # Fallback sample data if real data not found   
         st.warning("Using sample data as the real dataset wasn't found")
         data = pd.DataFrame({
             'drugName': ['Prozac', 'Lisinopril', 'Metformin', 'Zoloft', 'Amlodipine'],

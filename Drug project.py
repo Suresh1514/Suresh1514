@@ -1,14 +1,5 @@
-import subprocess
-import sys
 
-
-   
-try:
-    import matplotlib.pyplot as plt
-except ImportError:
- 
-
-
+import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt

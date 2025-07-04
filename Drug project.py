@@ -6,7 +6,7 @@ import sys
 try:
     import matplotlib.pyplot as plt
 except ImportError:
-    import matplotlib.pyplot as plt
+ 
 
 
 import streamlit as st

@@ -235,8 +235,9 @@ st.sidebar.markdown("""
 streamlit
 pandas
 numpy
-matplotlib
+matplotlib==3.5.3  # Pin a stable version
 seaborn
 wordcloud
 textblob
+python-dateutil
 """)

@@ -387,7 +387,7 @@ print(data['condition'].value_counts())
 
 #  Plot class imbalance
 import seaborn as sns
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plot
 
 plt.figure(figsize=(8, 5))
 sns.countplot(data=data, x='condition', palette='Set2')

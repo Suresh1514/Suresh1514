@@ -1,13 +1,11 @@
 import subprocess
 import sys
 
-def install(package):
-    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
 
+   
 try:
     import matplotlib.pyplot as plt
 except ImportError:
-    install("matplotlib==3.7.1")
     import matplotlib.pyplot as plt
 
 

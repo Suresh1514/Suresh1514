@@ -21,7 +21,8 @@ st.set_page_config(
 def load_data():
     try:
         data = pd.read_excel("drugsCom_raw.xlsx") 
-
+    except Exception as e:
+        st.warning(f"Using sample data as the real dataset wasn't found. Error: {e}")
         # Enhanced sample data with more entries for each condition
         sample_data = {
             'drugName': ['Prozac', 'Lisinopril', 'Metformin', 'Zoloft', 'Amlodipine',

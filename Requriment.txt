@@ -1,10 +1,6 @@
-matplotlib==3.8.0  # Newer stable version
-numpy==1.26.0  # Required dependency
-pillow==10.0.0  # For image processing
-pyparsing==3.1.1  # Critical hidden dependency
-python-dateutil==2.8.2
-cycler==0.12.1
-fonttools==4.43.1
-kiwisolver==1.4.5
-contourpy==1.1.1
-pip freeze | grep -E "matplotlib|numpy|pandas|streamlit" > requirements.txt
+streamlit==0.76.0
+matplotlib==3.3.3
+pandas==1.2.2
+statsmodels==0.12.2
+seaborn==0.11.1
+numpy==1.19.5

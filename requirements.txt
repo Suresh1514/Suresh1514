@@ -5,4 +5,9 @@ numpy
 seaborn
 wordcloud
 textblob
+python-dateutil
+scikit-learn
+nltk
+joblib
+
 

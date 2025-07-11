@@ -30,13 +30,31 @@ def preprocess_text(text):
 @st.cache_data
 def load_data():
     try:
-        # Load dataset from online source
-        url = "https://raw.githubusercontent.com/plotly/datasets/master/drugsCom_raw.csv"
-        data = pd.read_csv(url)
-        data = data[['drugName', 'condition', 'review', 'rating']].dropna()
+        # Create a sample dataset directly in the code
+        sample_data = {
+            'drugName': ['Prozac', 'Lisinopril', 'Metformin', 'Zoloft', 'Atenolol', 'Glipizide',
+                        'Lexapro', 'Hydrochlorothiazide', 'Januvia', 'Paxil'],
+            'condition': ['Depression', 'High Blood Pressure', 'Diabetes, Type 2', 
+                          'Depression', 'High Blood Pressure', 'Diabetes, Type 2',
+                          'Depression', 'High Blood Pressure', 'Diabetes, Type 2', 'Depression'],
+            'review': [
+                'This medication helped with my depression symptoms',
+                'Effective at controlling my blood pressure',
+                'Helped lower my blood sugar levels',
+                'Made me feel better but had some side effects',
+                'Good for blood pressure but caused dizziness',
+                'Worked well for my diabetes management',
+                'Improved my mood significantly',
+                'Reduced my blood pressure effectively',
+                'Helped control my blood sugar with no side effects',
+                'Took time to work but eventually helped'
+            ],
+            'rating': [9.0, 8.5, 8.0, 7.5, 7.0, 8.5, 9.0, 8.0, 8.5, 7.0]
+        }
+        
+        data = pd.DataFrame(sample_data)
         conditions = ['Depression', 'High Blood Pressure', 'Diabetes, Type 2']
         filtered = data[data['condition'].isin(conditions)].copy()
-        filtered = filtered.groupby('condition').apply(lambda x: x.sample(min(len(x), 200))).reset_index(drop=True)
         return filtered
     except Exception as e:
         st.error(f"Failed to load dataset: {e}")

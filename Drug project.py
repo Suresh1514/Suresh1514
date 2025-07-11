@@ -82,7 +82,7 @@ def load_data():
     'High Blood Pressure': 'headache, dizziness, blurred vision, shortness of breath',
     'Diabetes, Type 2': 'thirst, frequent urination, fatigue, blurry vision'
 }
-        data['symptoms'] = data['condition'].map(condition_symptoms)
+    
     
     return data
 

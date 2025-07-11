@@ -81,7 +81,7 @@ def load_data():
     'Depression': 'sadness, fatigue, insomnia, loss of interest',
     'High Blood Pressure': 'headache, dizziness, blurred vision, shortness of breath',
     'Diabetes, Type 2': 'thirst, frequent urination, fatigue, blurry vision'
-
+    }
 # Enhanced sentiment analysis function
 def analyze_sentiment(text):
     analysis = TextBlob(str(text))

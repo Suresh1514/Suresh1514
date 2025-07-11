@@ -71,8 +71,8 @@ def predict_and_recommend(review_text, data, vectorizer, model, encoder):
 
 st.title("💊 Disease Prediction and Drug Recommendation from Review Text")
 
-uploaded_file = st.sidebar.file_uploader("Upload Drug Review Dataset (.xlsx)", type=["xlsx"])
-data = load_data(uploaded_file)
+uploaded_file = st.sidebar.file_uploader
+data = load_data("drugsCom_raw.xlsx)
 
 if not data.empty:
     vectorizer, encoder, model = train_model(data)

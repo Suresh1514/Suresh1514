@@ -76,7 +76,7 @@ def load_data():
     data = data[data['condition'].isin(target_conditions)]
     
     # Create synthetic symptoms if the column doesn't exist
-    if 'symptoms' not in data.columns:
+  
     condition_symptoms = {
     'Depression': 'sadness, fatigue, insomnia, loss of interest',
     'High Blood Pressure': 'headache, dizziness, blurred vision, shortness of breath',

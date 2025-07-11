@@ -241,7 +241,7 @@ with tab7:
     
     # User input for symptoms
     symptoms_input = st.text_area("Enter your symptoms (comma separated):", 
-                                "fatigue, sadness, insomnia")
+                                "fatigue, sadness, insomnia,sugar")
     
     if st.button("Get Recommendation"):
         if symptoms_input.strip():

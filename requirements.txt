@@ -9,5 +9,5 @@ python-dateutil
 scikit-learn
 nltk
 joblib
-
+openpyxl
 

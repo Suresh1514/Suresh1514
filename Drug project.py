@@ -74,7 +74,7 @@ st.title("💊 Disease Prediction and Drug Recommendation from Review Text")
 uploaded_file = st.sidebar.file_uploader
 data = load_data("drugsCom_raw.xlsx")
 
-if not data.empty:
+if not data.empty:("Upload Drug Review Dataset (.xlsx)", type=["xlsx"])
     vectorizer, encoder, model = train_model(data)
 
     st.markdown("### ✍️ Enter a Review Below")

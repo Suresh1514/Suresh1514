@@ -10,4 +10,4 @@ scikit-learn
 nltk
 joblib
 openpyxl
-
+imblearn.over_sampling

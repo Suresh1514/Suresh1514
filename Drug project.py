@@ -1,4 +1,4 @@
-# Updated Drug Review Streamlit App with Bug Fix for Biased Prediction
+# Updated Drug Review Streamlit App Using Reviews for Disease Prediction
 
 import streamlit as st
 import pandas as pd
@@ -27,46 +27,12 @@ def load_data():
     try:
         data = pd.read_excel("drugsCom_raw.xlsx")
     except:
-        # More balanced synthetic data
-        sample_data = {
-            'drugName': ['Prozac', 'Lisinopril', 'Metformin', 'Zoloft', 'Amlodipine',
-                         'Lexapro', 'Hydrochlorothiazide', 'Insulin Glargine', 'Sertraline',
-                         'Losartan', 'Empagliflozin', 'Fluoxetine', 'Atenolol', 'Glipizide'],
-            'condition': ['Depression', 'High Blood Pressure', 'Diabetes, Type 2',
-                          'Depression', 'High Blood Pressure', 'Depression',
-                          'High Blood Pressure', 'Diabetes, Type 2', 'Depression',
-                          'High Blood Pressure', 'Diabetes, Type 2', 'Depression',
-                          'High Blood Pressure', 'Diabetes, Type 2'],
-            'review': [
-                "This medication changed my life!",
-                "Lowered BP but caused dizziness",
-                "Controlled my sugar levels well",
-                "Didn't help, felt worse",
-                "Works well with minor side effects",
-                "Improved slowly over weeks",
-                "Effective but frequent urination",
-                "Essential for diabetes",
-                "Helped with anxiety and depression",
-                "Effective, no side effects",
-                "Controlled sugar effectively",
-                "Effective after some time",
-                "Mild improvement",
-                "Reduced my A1C"
-            ],
-            'rating': [9, 7, 6, 3, 8, 8, 6, 9, 7, 8, 8, 7, 6, 8],
-            'usefulCount': [45, 32, 28, 19, 37, 42, 25, 50, 33, 40, 38, 29, 22, 35]
-        }
-        data = pd.DataFrame(sample_data)
+        st.error("Dataset not found and cannot continue.")
+        return pd.DataFrame()
 
     target_conditions = ['Depression', 'High Blood Pressure', 'Diabetes, Type 2']
     data = data[data['condition'].isin(target_conditions)]
-
-    condition_symptoms = {
-        'Depression': 'sadness, hopelessness, loss of interest, insomnia, fatigue',
-        'High Blood Pressure': 'high bp, headache, dizziness, blurred vision, nosebleed',
-        'Diabetes, Type 2': 'thirst, frequent urination, fatigue, blurry vision, slow healing'
-    }
-    data['symptoms'] = data['condition'].map(condition_symptoms)
+    data.dropna(subset=['review', 'condition'], inplace=True)
     return data
 
 def preprocess_text(text):
@@ -93,9 +59,9 @@ def analyze_sentiment(text):
         return 'Neutral'
 
 def train_model(data):
-    data['processed_symptoms'] = data['symptoms'].apply(preprocess_text)
-    vectorizer = TfidfVectorizer()
-    X = vectorizer.fit_transform(data['processed_symptoms'])
+    data['processed_review'] = data['review'].apply(preprocess_text)
+    vectorizer = TfidfVectorizer(max_features=2000)
+    X = vectorizer.fit_transform(data['processed_review'])
     le = LabelEncoder()
     y = le.fit_transform(data['condition'])
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -105,13 +71,13 @@ def train_model(data):
     st.sidebar.success(f"Model accuracy: {accuracy:.2f}")
     return vectorizer, le, model
 
-def recommend_drugs(symptoms, data, vectorizer, model, encoder):
-    processed = preprocess_text(symptoms)
+def recommend_drugs_from_review(review_text, data, vectorizer, model, encoder):
+    processed = preprocess_text(review_text)
     vector = vectorizer.transform([processed])
     disease_encoded = model.predict(vector)
     disease = encoder.inverse_transform(disease_encoded)[0]
 
-    st.write(f"Processed symptoms: {processed}")
+    st.write(f"Processed review: {processed}")
     st.write(f"Predicted condition: {disease}")
 
     drugs = data[data['condition'] == disease]
@@ -120,18 +86,22 @@ def recommend_drugs(symptoms, data, vectorizer, model, encoder):
 
 # --- Main App ---
 data = load_data()
+
+if data.empty:
+    st.stop()
+
 vectorizer, encoder, model = train_model(data)
 
-st.title("💊 Drug Recommendation System")
+st.title("💊 Drug Review-Based Disease Prediction and Recommendation")
 
-symptoms_input = st.text_area("Enter your symptoms (comma-separated):", "fatigue, insomnia, sadness")
+review_input = st.text_area("Paste your drug review or experience:", "This drug helped me sleep and reduced my sadness")
 
-if st.button("Predict & Recommend"):
-    if symptoms_input.strip():
-        condition, top_drugs = recommend_drugs(symptoms_input, data, vectorizer, model, encoder)
+if st.button("Predict Disease & Recommend Drug"):
+    if review_input.strip():
+        condition, top_drugs = recommend_drugs_from_review(review_input, data, vectorizer, model, encoder)
         st.success(f"Predicted Condition: {condition}")
         st.subheader("Top Recommended Drugs:")
         for drug, rating in top_drugs.items():
             st.markdown(f"- **{drug}**: Avg Rating {rating:.1f}")
     else:
-        st.warning("Please enter symptoms.")
+        st.warning("Please enter a review to analyze.")

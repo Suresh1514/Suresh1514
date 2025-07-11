@@ -440,3 +440,18 @@ with tab7:
 # Requirements for deployment
 st.sidebar.markdown("""
 **Requirements:**
+
+
+streamlit==1.32.2
+pandas==2.1.4
+numpy==1.26.2
+scikit-learn==1.3.2
+textblob==0.17.1
+matplotlib==3.8.2
+seaborn==0.13.0
+wordcloud==1.9.3
+python-dateutil==2.8.2
+joblib==1.3.2
+
+""")
+

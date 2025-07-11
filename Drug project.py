@@ -28,12 +28,11 @@ def preprocess_text(text):
     return ' '.join(words)
 
 @st.cache_data
-def load_data(file="drugsCom_raw.xlsx"):
+def load_data():
     try:
-        if file:
-            data = pd.read_excel("drugsCom_raw.xlsx")
-        else:
-            data = pd.read_excel("drugsCom_raw.xlsx")
+        # Load dataset from online source
+        url = "https://raw.githubusercontent.com/plotly/datasets/master/drugsCom_raw.csv"
+        data = pd.read_csv(url)
         data = data[['drugName', 'condition', 'review', 'rating']].dropna()
         conditions = ['Depression', 'High Blood Pressure', 'Diabetes, Type 2']
         filtered = data[data['condition'].isin(conditions)].copy()
@@ -71,10 +70,9 @@ def predict_and_recommend(review_text, data, vectorizer, model, encoder):
 
 st.title("💊 Disease Prediction and Drug Recommendation from Review Text")
 
-uploaded_file = st.sidebar.file_uploader
-data = load_data("drugsCom_raw.xlsx")
+data = load_data()
 
-if not data.empty:("Upload Drug Review Dataset (.xlsx)", type=["xlsx"])
+if not data.empty:
     vectorizer, encoder, model = train_model(data)
 
     st.markdown("### ✍️ Enter a Review Below")
@@ -90,4 +88,4 @@ if not data.empty:("Upload Drug Review Dataset (.xlsx)", type=["xlsx"])
         else:
             st.warning("Please enter a review to proceed.")
 else:
-    st.warning("No data loaded. Please upload a dataset.")
+    st.warning("Failed to load dataset. Please try again later.")

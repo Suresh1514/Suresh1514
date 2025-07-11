@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plot
 import seaborn as sns
 from wordcloud import WordCloud, STOPWORDS
 import re
@@ -9,13 +9,96 @@ from textblob import TextBlob
 from datetime import datetime
 from sklearn.preprocessing import MinMaxScaler
 from collections import defaultdict
+
+# Add these imports at the top of your file
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, accuracy_score
 from sklearn.preprocessing import LabelEncoder
 import joblib
-from scipy.sparse import hstack
+
+def train_models(data):
+    """
+    Train enhanced machine learning models for drug recommendation with ratings and sentiment
+    """
+    # Prepare drug recommendation data with additional features
+    drug_data = data[['condition', 'review', 'drugName', 'rating', 'sentiment', 'usefulCount']].dropna()
+    
+    # Combine condition and review as features
+    drug_data['features'] = drug_data['condition'] + " " + drug_data['review']
+    
+    # Encode drug names as labels
+    drug_le = LabelEncoder()
+    drug_data['drug_label'] = drug_le.fit_transform(drug_data['drugName'])
+    
+    # Encode sentiment as numerical values
+    sentiment_map = {
+        'Negative': 0,
+        'Slightly Negative': 1,
+        'Neutral': 2,
+        'Slightly Positive': 3,
+        'Positive': 4
+    }
+    drug_data['sentiment_score'] = drug_data['sentiment'].map(sentiment_map)
+    
+    # TF-IDF Vectorization
+    drug_vectorizer = TfidfVectorizer(max_features=1500, stop_words='english', ngram_range=(1, 2))
+    X_text = drug_vectorizer.fit_transform(drug_data['features'])
+    
+    # Additional numerical features
+    X_num = drug_data[['rating', 'sentiment_score', 'usefulCount']].values
+    
+    # Normalize numerical features
+    scaler = MinMaxScaler()
+    X_num_scaled = scaler.fit_transform(X_num)
+    
+    # Combine features
+    from scipy.sparse import hstack
+    X_drug = hstack([X_text, X_num_scaled])
+    y_drug = drug_data['drug_label']
+    
+    # Split data
+    X_drug_train, X_drug_test, y_drug_train, y_drug_test = train_test_split(
+        X_drug, y_drug, test_size=0.2, random_state=42
+    )
+    
+    # Train model
+    drug_model = RandomForestClassifier(n_estimators=150, random_state=42, class_weight='balanced')
+    drug_model.fit(X_drug_train, y_drug_train)
+    
+    # Prepare drug metadata for ranking
+    drug_metadata = data.groupby('drugName').agg({
+        'rating': 'mean',
+        'sentiment': lambda x: x.map(sentiment_map).mean(),
+        'usefulCount': 'mean',
+        'review': 'count'
+    }).rename(columns={'review': 'review_count'})
+    
+    # Normalize metadata for scoring
+    drug_metadata_scaled = pd.DataFrame(
+        scaler.fit_transform(drug_metadata),
+        columns=drug_metadata.columns,
+        index=drug_metadata.index
+    )
+    
+    # Create composite score (weights can be adjusted)
+    drug_metadata['composite_score'] = (
+        0.4 * drug_metadata_scaled['rating'] +
+        0.3 * drug_metadata_scaled['sentiment'] +
+        0.2 * drug_metadata_scaled['usefulCount'] +
+        0.1 * drug_metadata_scaled['review_count']
+    )
+    
+    return {
+        'drug_model': drug_model,
+        'drug_vectorizer': drug_vectorizer,
+        'drug_le': drug_le,
+        'drug_metadata': drug_metadata,
+        'scaler': scaler,
+        'sentiment_map': sentiment_map
+    }
+
 
 # Set page configuration
 st.set_page_config(
@@ -87,115 +170,8 @@ def analyze_sentiment(text):
     else:
         return 'Neutral'
 
-def train_models(data):
-    """
-    Train enhanced machine learning models for drug recommendation and disease classification
-    """
-    # Prepare drug recommendation data with additional features
-    drug_data = data[['condition', 'review', 'drugName', 'rating', 'sentiment', 'usefulCount']].dropna()
-    
-    # Combine condition and review as features
-    drug_data['features'] = drug_data['condition'] + " " + drug_data['review']
-    
-    # Encode drug names as labels
-    drug_le = LabelEncoder()
-    drug_data['drug_label'] = drug_le.fit_transform(drug_data['drugName'])
-    
-    # Encode sentiment as numerical values
-    sentiment_map = {
-        'Negative': 0,
-        'Slightly Negative': 1,
-        'Neutral': 2,
-        'Slightly Positive': 3,
-        'Positive': 4
-    }
-    drug_data['sentiment_score'] = drug_data['sentiment'].map(sentiment_map)
-    
-    # TF-IDF Vectorization for drug recommendation
-    drug_vectorizer = TfidfVectorizer(max_features=1500, stop_words='english', ngram_range=(1, 2))
-    X_text = drug_vectorizer.fit_transform(drug_data['features'])
-    
-    # Additional numerical features
-    X_num = drug_data[['rating', 'sentiment_score', 'usefulCount']].values
-    
-    # Normalize numerical features
-    scaler = MinMaxScaler()
-    X_num_scaled = scaler.fit_transform(X_num)
-    
-    # Combine features
-    X_drug = hstack([X_text, X_num_scaled])
-    y_drug = drug_data['drug_label']
-    
-    # Split data
-    X_drug_train, X_drug_test, y_drug_train, y_drug_test = train_test_split(
-        X_drug, y_drug, test_size=0.2, random_state=42
-    )
-    
-    # Train drug recommendation model
-    drug_model = RandomForestClassifier(n_estimators=150, random_state=42, class_weight='balanced')
-    drug_model.fit(X_drug_train, y_drug_train)
-    
-    # Prepare drug metadata for ranking
-    drug_metadata = data.groupby('drugName').agg({
-        'rating': 'mean',
-        'sentiment': lambda x: x.map(sentiment_map).mean(),
-        'usefulCount': 'mean',
-        'review': 'count'
-    }).rename(columns={'review': 'review_count'})
-    
-    # Normalize metadata for scoring
-    drug_metadata_scaled = pd.DataFrame(
-        scaler.fit_transform(drug_metadata),
-        columns=drug_metadata.columns,
-        index=drug_metadata.index
-    )
-    
-    # Create composite score (weights can be adjusted)
-    drug_metadata['composite_score'] = (
-        0.4 * drug_metadata_scaled['rating'] +
-        0.3 * drug_metadata_scaled['sentiment'] +
-        0.2 * drug_metadata_scaled['usefulCount'] +
-        0.1 * drug_metadata_scaled['review_count']
-    )
-    
-    # Prepare disease classification data
-    disease_data = data[['review', 'condition']].dropna()
-    
-    # Encode conditions as labels
-    disease_le = LabelEncoder()
-    disease_data['condition_label'] = disease_le.fit_transform(disease_data['condition'])
-    
-    # TF-IDF Vectorization for disease classification
-    disease_vectorizer = TfidfVectorizer(max_features=1000, stop_words='english')
-    X_disease = disease_vectorizer.fit_transform(disease_data['review'])
-    y_disease = disease_data['condition_label']
-    
-    # Split data
-    X_disease_train, X_disease_test, y_disease_train, y_disease_test = train_test_split(
-        X_disease, y_disease, test_size=0.2, random_state=42
-    )
-    
-    # Train disease classification model
-    disease_model = RandomForestClassifier(n_estimators=100, random_state=42)
-    disease_model.fit(X_disease_train, y_disease_train)
-    
-    return {
-        'drug_model': drug_model,
-        'drug_vectorizer': drug_vectorizer,
-        'drug_le': drug_le,
-        'drug_metadata': drug_metadata,
-        'scaler': scaler,
-        'sentiment_map': sentiment_map,
-        'disease_model': disease_model,
-        'disease_vectorizer': disease_vectorizer,
-        'disease_le': disease_le
-    }
-
 # Load data
 data = load_data()
-
-# Add sentiment analysis
-data['sentiment'] = data['review'].apply(analyze_sentiment)
 
 # Title and description
 st.title("💊 Advanced Drug Reviews Analysis Dashboard")
@@ -239,19 +215,25 @@ filtered_data = data[
     (data['date'] <= pd.to_datetime(selected_dates[1]))
 ]
 
+# Add sentiment analysis
+if not filtered_data.empty:
+    filtered_data['sentiment'] = filtered_data['review'].apply(analyze_sentiment)
+
+
 @st.cache_resource
 def get_models():
     data = load_data()
-    data['sentiment'] = data['review'].apply(analyze_sentiment)
     return train_models(data)
 
 models = get_models()
+
 
 # Main content
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "Overview", "Rating Analysis", "Sentiment Analysis", 
     "Condition Comparison", "Word Cloud", "Data Explorer", "Prediction"
 ])
+
 
 with tab1:
     st.header("Data Overview")
@@ -274,7 +256,7 @@ with tab1:
     
     st.subheader("Top 10 Drugs by Review Count")
     top_drugs = filtered_data['drugName'].value_counts().nlargest(10)
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plot.subplots(figsize=(10, 6))
     sns.barplot(y=top_drugs.index, x=top_drugs.values, palette="viridis", ax=ax)
     ax.set_title('Top 10 Drugs by Review Count')
     ax.set_xlabel('Number of Reviews')
@@ -291,7 +273,7 @@ with tab2:
     
     with col1:
         st.subheader("Rating Distribution by Condition")
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plot.subplots(figsize=(10, 6))
         sns.boxplot(data=filtered_data, x='condition', y='rating', palette="Set2", ax=ax)
         ax.set_title('Rating Distribution by Medical Condition')
         ax.set_xlabel('Medical Condition')
@@ -300,7 +282,7 @@ with tab2:
     
     with col2:
         st.subheader("Rating Distribution")
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plot.subplots(figsize=(10, 6))
         sns.histplot(data=filtered_data, x='rating', hue='condition', 
                      multiple='stack', bins=10, palette="Set2", ax=ax)
         ax.set_title('Stacked Rating Distribution by Condition')
@@ -309,7 +291,7 @@ with tab2:
         st.pyplot(fig)
     
     st.subheader("Rating Trends Over Time")
-    fig, ax = plt.subplots(figsize=(12, 6))
+    fig, ax = plot.subplots(figsize=(12, 6))
     for condition in filtered_data['condition'].unique():
         condition_data = filtered_data[filtered_data['condition'] == condition]
         trend = condition_data.groupby(condition_data['date'].dt.to_period("M"))['rating'].mean()
@@ -319,7 +301,7 @@ with tab2:
     ax.set_xlabel('Month')
     ax.set_ylabel('Average Rating')
     ax.legend()
-    plt.xticks(rotation=45)
+    plot.xticks(rotation=45)
     st.pyplot(fig)
 
 with tab3:
@@ -331,7 +313,7 @@ with tab3:
         with col1:
             st.subheader("Sentiment Distribution")
             sentiment_counts = filtered_data['sentiment'].value_counts()
-            fig, ax = plt.subplots(figsize=(8, 8))
+            fig, ax = plot.subplots(figsize=(8, 8))
             colors = ['#4CAF50', '#8BC34A', '#FFC107', '#FF9800', '#F44336']
             ax.pie(sentiment_counts, labels=sentiment_counts.index, autopct='%1.1f%%',
                   colors=colors, startangle=90)
@@ -340,7 +322,7 @@ with tab3:
         
         with col2:
             st.subheader("Sentiment by Condition")
-            fig, ax = plt.subplots(figsize=(10, 6))
+            fig, ax = plot.subplots(figsize=(10, 6))
             sns.countplot(data=filtered_data, x='condition', hue='sentiment', 
                           palette="Set2", ax=ax)
             ax.set_title('Sentiment Distribution by Condition')
@@ -350,7 +332,7 @@ with tab3:
             st.pyplot(fig)
         
         st.subheader("Sentiment vs Rating Analysis")
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plot.subplots(figsize=(10, 6))
         sns.boxplot(data=filtered_data, x='sentiment', y='rating', 
                    order=['Negative', 'Slightly Negative', 'Neutral', 
                          'Slightly Positive', 'Positive'],
@@ -388,7 +370,7 @@ with tab4:
         
         with col1:
             st.subheader("Average Rating by Condition")
-            fig, ax = plt.subplots(figsize=(10, 6))
+            fig, ax = plot.subplots(figsize=(10, 6))
             sns.barplot(data=filtered_data, x='condition', y='rating', 
                        palette="viridis", ci=None, ax=ax)
             ax.set_title('Average Rating by Medical Condition')
@@ -403,7 +385,7 @@ with tab4:
         
         with col2:
             st.subheader("Usefulness by Condition")
-            fig, ax = plt.subplots(figsize=(10, 6))
+            fig, ax = plot.subplots(figsize=(10, 6))
             sns.barplot(data=filtered_data, x='condition', y='usefulCount', 
                         palette="magma", ci=None, ax=ax)
             ax.set_title('Average Useful Count by Medical Condition')
@@ -423,7 +405,7 @@ with tab4:
         condition_data = filtered_data[filtered_data['condition'] == condition_choice]
         top_drugs = condition_data.groupby('drugName')['rating'].mean().nlargest(5)
         
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plot.subplots(figsize=(10, 6))
         sns.barplot(y=top_drugs.index, x=top_drugs.values, palette="coolwarm", ax=ax)
         ax.set_title(f'Top 5 Drugs for {condition_choice} by Average Rating')
         ax.set_xlabel('Average Rating')
@@ -449,10 +431,10 @@ with tab5:
                               filtered_data[filtered_data['sentiment'] == sentiment_choice]['review'])
                 title = f"Word Cloud for {sentiment_choice} Reviews"
             
-            wordcloud = WordCloud(width=800, height=400, background_color='white', 
+            wordcloud = WordCloud(width=800, height=400, background_color='Green', 
                                 stopwords=STOPWORDS, max_words=100, colormap='viridis').generate(text)
             
-            fig, ax = plt.subplots(figsize=(10, 5))
+            fig, ax = plot.subplots(figsize=(10, 5))
             ax.imshow(wordcloud, interpolation='bilinear')
             ax.set_title(title, pad=20)
             ax.axis('off')
@@ -470,10 +452,10 @@ with tab5:
                               filtered_data[filtered_data['condition'] == condition_choice]['review'])
                 title = f"Word Cloud for {condition_choice} Reviews"
             
-            wordcloud = WordCloud(width=800, height=400, background_color='white', 
+            wordcloud = WordCloud(width=800, height=400, background_color='Green', 
                                 stopwords=STOPWORDS, max_words=100, colormap='plasma').generate(text)
             
-            fig, ax = plt.subplots(figsize=(10, 5))
+            fig, ax = plot.subplots(figsize=(10, 5))
             ax.imshow(wordcloud, interpolation='bilinear')
             ax.set_title(title, pad=20)
             ax.axis('off')
@@ -495,11 +477,40 @@ with tab6:
             mime="text/csv"
         )
 
+print("\n Top 20 Most Reviewed Drugs:")
+print(data['drugName'].value_counts().head(20))
+
+# Count how many unique drugs exist
+print(f"\nTotal unique drugs: {data['drugName'].nunique()}")
+
+# 2. Class distribution of target variable (condition)
+print("\n Distribution of Conditions:")
+print(data['condition'].value_counts())
+
+#  Plot class imbalance
+import seaborn as sns
+import matplotlib.pyplot as plot
+
+plot.figure(figsize=(8, 5))
+sns.countplot(data=data, x='condition', palette='Set2')
+plot.title('Condition Class Distribution')
+plot.xlabel('Condition')
+plot.ylabel('Count')
+plot.show()
+
+# Add some space at the bottom
+st.markdown("---")
+st.markdown("""
+**Note:** This application analyzes patient reviews for Depression, High Blood Pressure, and Diabetes (Type 2) medications.
+The sentiment analysis categorizes reviews into five categories for more nuanced understanding.
+""")
+
 with tab7:
     st.header("Enhanced Drug Recommendation System")
     st.markdown("""
     This system recommends drugs based on:
     - Your medical condition and symptoms
+    - Review text similarity with existing reviews
     - Average ratings and sentiment analysis
     - Community usefulness scores
     """)
@@ -519,6 +530,15 @@ with tab7:
             max_value=10.0,
             value=7.0,
             step=0.5
+        )
+        
+        similarity_weight = st.slider(
+            "Weight for review similarity",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.6,
+            step=0.1,
+            help="How much to prioritize drugs with similar reviews to your input"
         )
     
     with col2:
@@ -540,6 +560,14 @@ with tab7:
                 input_text = f"{input_condition} {input_review}"
                 input_vec = models['drug_vectorizer'].transform([input_text])
                 
+                # Calculate similarity with all reviews in dataset
+                all_reviews_vec = models['drug_vectorizer'].transform(data['review'])
+                similarities = (input_vec * all_reviews_vec.T).toarray().flatten()
+                data['similarity'] = similarities
+                
+                # Get average similarity scores for each drug
+                drug_similarity = data.groupby('drugName')['similarity'].mean()
+                
                 # Add numerical features (using median values as defaults)
                 input_num = np.array([[7.0, 3.0, 30.0]])  # Default: rating=7, sentiment=3 (Slightly Positive), usefulCount=30
                 input_num_scaled = models['scaler'].transform(input_num)
@@ -559,10 +587,16 @@ with tab7:
                     if drug in models['drug_metadata'].index:
                         meta = models['drug_metadata'].loc[drug]
                         if meta['rating'] >= min_rating_filter:
+                            # Get similarity score for this drug
+                            sim_score = drug_similarity.get(drug, 0)
+                            
                             if include_sentiment:
-                                score = meta['composite_score']
+                                base_score = meta['composite_score']
                             else:
-                                score = 0.6 * meta['rating'] + 0.4 * meta['usefulCount']
+                                base_score = 0.6 * meta['rating'] + 0.4 * meta['usefulCount']
+                            
+                            # Combine base score with similarity score
+                            score = (similarity_weight * sim_score) + ((1 - similarity_weight) * base_score)
                             
                             recommendations.append({
                                 'drug': drug,
@@ -570,10 +604,11 @@ with tab7:
                                 'rating': meta['rating'],
                                 'sentiment': meta['sentiment'],
                                 'usefulCount': meta['usefulCount'],
-                                'review_count': meta['review_count']
+                                'review_count': meta['review_count'],
+                                'similarity': sim_score
                             })
                 
-                # Sort by score
+                # Sort by combined score
                 recommendations.sort(key=lambda x: x['score'], reverse=True)
                 
                 # Display top 5 recommendations
@@ -601,6 +636,10 @@ with tab7:
                 }
                 .positive { color: #27ae60; }
                 .negative { color: #e74c3c; }
+                .similarity {
+                    font-size: 0.9em;
+                    color: #3498db;
+                }
                 </style>
                 """, unsafe_allow_html=True)
                 
@@ -626,27 +665,24 @@ with tab7:
                         <div class="drug-name">{i}. {rec['drug']}</div>
                         <div>Average Rating: <span class="rating">{rec['rating']:.1f}/10</span></div>
                         <div>Sentiment: <span class="sentiment {sentiment_class}">{sentiment_label}</span></div>
+                        <div class="similarity">Review Similarity: {rec['similarity']:.2f}</div>
                         <div>Based on {int(rec['review_count'])} reviews | Useful Count: {rec['usefulCount']:.1f}</div>
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    # Show top reviews for this drug
-                    drug_reviews = data[data['drugName'] == rec['drug']]
+                    # Show most similar reviews for this drug
+                    drug_reviews = data[data['drugName'] == rec['drug']].sort_values('similarity', ascending=False)
                     if not drug_reviews.empty:
-                        with st.expander(f"See representative reviews for {rec['drug']}"):
-                            # Get one review for each sentiment category
-                            for sentiment in ['Positive', 'Slightly Positive', 'Neutral', 'Slightly Negative', 'Negative']:
-                                sentiment_reviews = drug_reviews[drug_reviews['sentiment'] == sentiment]
-                                if not sentiment_reviews.empty:
-                                    review = sentiment_reviews.sample(1).iloc[0]
-                                    st.markdown(f"""
-                                    <div style="margin: 5px 0; padding: 8px; 
-                                                border-left: 3px solid {'#2ecc71' if 'Positive' in sentiment else '#e74c3c' if 'Negative' in sentiment else '#f39c12'};
-                                                background-color: #f5f5f5;">
-                                        <div><b>{sentiment} Review</b> (Rating: {review['rating']}/10)</div>
-                                        <div>"{review['review']}"</div>
-                                    </div>
-                                    """, unsafe_allow_html=True)
+                        with st.expander(f"See most similar reviews for {rec['drug']}"):
+                            for idx, row in drug_reviews.head(3).iterrows():
+                                st.markdown(f"""
+                                <div style="margin: 5px 0; padding: 8px; 
+                                            border-left: 3px solid #3498db;
+                                            background-color: #f5f5f5;">
+                                    <div><b>Similarity: {row['similarity']:.2f}</b> (Rating: {row['rating']}/10)</div>
+                                    <div>"{row['review']}"</div>
+                                </div>
+                                """, unsafe_allow_html=True)
                 if not recommendations:
                     st.warning("No drugs match your criteria. Try adjusting your filters.")
         else:
@@ -670,7 +706,7 @@ with tab7:
                 comparison_data.append({
                     'Drug': drug,
                     'Avg Rating': meta['rating'],
-                    'Sentiment Score': meta['sentiment'],
+                    'Sentiment': meta['sentiment'],
                     'Useful Count': meta['usefulCount'],
                     'Review Count': meta['review_count']
                 })
@@ -680,79 +716,26 @@ with tab7:
             st.dataframe(
                 df_comparison.style
                 .background_gradient(subset=['Avg Rating'], cmap='YlOrRd')
-                .background_gradient(subset=['Sentiment Score'], cmap='RdYlGn')
+                .background_gradient(subset=['Sentiment'], cmap='RdYlGn')
                 .format({
                     'Avg Rating': '{:.1f}',
-                    'Sentiment Score': '{:.2f}',
+                    'Sentiment': '{:.2f}',
                     'Useful Count': '{:.1f}'
                 }),
                 height=(len(df_comparison) + 1) * 35 + 3
             )
-            
-            # Visual comparison
-            fig, ax = plt.subplots(figsize=(10, 6))
-            x = range(len(selected_drugs))
-            width = 0.2
-            
-            # Plot rating
-            ax.bar(x, df_comparison['Avg Rating'], width, label='Avg Rating', color='#e67e22')
-            
-            # Plot sentiment (scaled to 10)
-            ax.bar([i + width for i in x], 
-                  df_comparison['Sentiment Score'] * 2.5,  # Scale 0-4 to 0-10
-                  width, label='Sentiment (scaled)', color='#2ecc71')
-            
-            # Plot usefulness (scaled)
-            max_useful = df_comparison['Useful Count'].max()
-            scale_factor = 10 / max_useful if max_useful > 0 else 1
-            ax.bar([i + width*2 for i in x], 
-                  df_comparison['Useful Count'] * scale_factor,
-                  width, label='Usefulness (scaled)', color='#3498db')
-            
-            ax.set_xticks([i + width for i in x])
-            ax.set_xticklabels(selected_drugs)
-            ax.set_ylabel('Score (scaled to 10)')
-            ax.set_title('Drug Comparison (Metrics Scaled to 10)')
-            ax.legend()
-            st.pyplot(fig)
-    
-    # Disease classification section
-    st.markdown("---")
-    st.subheader("Disease Classification")
-    st.write("Enter a drug review to predict the most likely medical condition")
-    
-    classify_review = st.text_area(
-        "Enter a drug review for classification",
-        placeholder="e.g., This medication helped control my blood sugar levels effectively...",
-        key="classify_review"
-    )
-    
-    if st.button("Classify Condition"):
-        if classify_review:
-            # Prepare input
-            input_vec = models['disease_vectorizer'].transform([classify_review])
-            
-            # Get prediction
-            prediction = models['disease_model'].predict(input_vec)
-            condition = models['disease_le'].inverse_transform(prediction)[0]
-            
-            # Get confidence
-            probabilities = models['disease_model'].predict_proba(input_vec)[0]
-            confidence = probabilities.max()
-            
-            # Display result
-            st.subheader("Predicted Condition")
-            st.success(f"**{condition}** (confidence: {confidence*100:.1f}%)")
-            
-            # Show similar reviews
-            st.subheader("Similar Reviews")
-            similar_reviews = data[data['condition'] == condition]['review'].sample(min(5, len(data[data['condition'] == condition])))
-            for review in similar_reviews:
-                st.markdown(f"<div style='background-color:#f0f0f0; padding:8px; border-radius:4px; margin:4px 0;'>{review}</div>", 
-                            unsafe_allow_html=True)
-        else:
-            st.warning("Please enter a review to classify")
+
 
 # Add requirements.txt for deployment
 st.sidebar.markdown("""
 **Deployment requirements.txt:**
+streamlit
+pandas
+numpy
+matplotlib
+seaborn
+wordcloud
+textblob
+python-dateutil
+""")
+

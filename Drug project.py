@@ -28,10 +28,10 @@ def preprocess_text(text):
     return ' '.join(words)
 
 @st.cache_data
-def load_data(file=None):
+def load_data(file="drugsCom_raw.xlsx"):
     try:
         if file:
-            data = pd.read_excel(file)
+            data = pd.read_excel("drugsCom_raw.xlsx")
         else:
             data = pd.read_excel("drugsCom_raw.xlsx")
         data = data[['drugName', 'condition', 'review', 'rating']].dropna()

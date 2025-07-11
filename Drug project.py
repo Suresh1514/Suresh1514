@@ -1,17 +1,18 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plot
 import seaborn as sns
 from wordcloud import WordCloud, STOPWORDS
 import re
 from textblob import TextBlob
 from datetime import datetime
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score
 import joblib
 import nltk
 from nltk.corpus import stopwords
@@ -74,114 +75,105 @@ def load_data():
     target_conditions = ['Depression', 'High Blood Pressure', 'Diabetes, Type 2']
     data = data[data['condition'].isin(target_conditions)]
     
-    # Create synthetic symptoms with medical accuracy
+    # Create synthetic symptoms if the column doesn't exist
     if 'symptoms' not in data.columns:
         condition_symptoms = {
-            'Depression': 'low mood sadness hopelessness fatigue insomnia',
-            'High Blood Pressure': 'headache dizziness nosebleeds shortness breath',
-            'Diabetes, Type 2': 'thirst frequent urination hunger fatigue blurry vision'
+            'Depression': 'sadness, fatigue, insomnia, loss of interest',
+            'High Blood Pressure': 'headache, dizziness, blurred vision, shortness of breath',
+            'Diabetes, Type 2': 'thirst, frequent urination, fatigue, blurry vision'
         }
         data['symptoms'] = data['condition'].map(condition_symptoms)
     
     return data
 
-# Enhanced sentiment analysis
+# Enhanced sentiment analysis function
 def analyze_sentiment(text):
     analysis = TextBlob(str(text))
     polarity = analysis.sentiment.polarity
-    
-    if polarity > 0.3:
-        return 'Strongly Positive'
-    elif polarity > 0.1:
+    if polarity > 0.2:
         return 'Positive'
-    elif polarity > -0.1:
-        return 'Neutral'
-    elif polarity > -0.3:
+    elif polarity < -0.2:
         return 'Negative'
+    elif polarity > 0:
+        return 'Slightly Positive'
+    elif polarity < 0:
+        return 'Slightly Negative'
     else:
-        return 'Strongly Negative'
+        return 'Neutral'
 
-# Improved text preprocessing
+# Text preprocessing function
 def preprocess_text(text):
-    text = str(text).lower()
+    # Convert to lowercase
+    text = text.lower()
+    # Remove special characters
     text = re.sub(r'[^a-zA-Z0-9\s]', '', text)
+    # Tokenize
     words = text.split()
-    
+    # Remove stopwords
     stop_words = set(stopwords.words('english'))
-    medical_stopwords = {'drug', 'medication', 'doctor', 'prescribed', 'mg'}
-    stop_words.update(medical_stopwords)
-    
     words = [word for word in words if word not in stop_words]
-    
+    # Lemmatization
     lemmatizer = WordNetLemmatizer()
-    words = [lemmatizer.lemmatize(word, pos='v') for word in words]
     words = [lemmatizer.lemmatize(word) for word in words]
-    
     return ' '.join(words)
 
 # Train disease classification model
 def train_disease_model(data):
+    # Preprocess symptoms
     data['processed_symptoms'] = data['symptoms'].apply(preprocess_text)
     
-    vectorizer = TfidfVectorizer(max_features=1500, ngram_range=(1, 2))
+    # Vectorize symptoms
+    vectorizer = TfidfVectorizer(max_features=1000)
     X = vectorizer.fit_transform(data['processed_symptoms'])
     
+    # Encode conditions
     le = LabelEncoder()
     y = le.fit_transform(data['condition'])
     
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y)
+    # Train-test split
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
-    model = RandomForestClassifier(
-        n_estimators=150, 
-        max_depth=10, 
-        min_samples_split=5,
-        random_state=42
-    )
+    # Train model
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
     model.fit(X_train, y_train)
     
+    # Evaluate
     y_pred = model.predict(X_test)
     accuracy = accuracy_score(y_test, y_pred)
-    report = classification_report(y_test, y_pred, target_names=le.classes_)
-    
     st.sidebar.info(f"Disease prediction model accuracy: {accuracy:.2f}")
-    st.sidebar.text("Classification Report:\n" + report)
     
     return vectorizer, le, model
 
-# Enhanced drug recommendation
+# Drug recommendation function
 def recommend_drugs(symptoms, data, vectorizer, disease_model, disease_encoder):
+    # Preprocess input symptoms
     processed_symptoms = preprocess_text(symptoms)
+    
+    # Predict disease
     symptoms_vec = vectorizer.transform([processed_symptoms])
+    disease_encoded = disease_model.predict(symptoms_vec)
+    disease = disease_encoder.inverse_transform(disease_encoded)[0]
     
-    disease_probs = disease_model.predict_proba(symptoms_vec)[0]
-    disease = disease_encoder.inverse_transform([np.argmax(disease_probs)])[0]
-    confidence = np.max(disease_probs)
-    
-    st.sidebar.info(f"Prediction Confidence: {confidence:.2%}")
-    
+    # Filter drugs for the predicted disease
     disease_drugs = data[data['condition'] == disease]
     
     if disease_drugs.empty:
         return None, disease, None, None
     
-    disease_drugs['score'] = (disease_drugs['rating'] * 0.6 + 
-                             disease_drugs['usefulCount'] * 0.4)
-    
+    # Get top drugs by average rating
     top_drugs = disease_drugs.groupby('drugName').agg({
-        'score': 'mean',
         'rating': 'mean',
         'usefulCount': 'mean',
         'review': 'count'
-    }).sort_values(by='score', ascending=False).head(5)
+    }).sort_values(by=['rating', 'usefulCount'], ascending=False).head(5)
     
+    # Get sentiment distribution for top drugs
     drug_sentiments = {}
     for drug in top_drugs.index:
         drug_reviews = disease_drugs[disease_drugs['drugName'] == drug]
-        if not drug_reviews.empty:
-            drug_reviews['sentiment'] = drug_reviews['review'].apply(analyze_sentiment)
-            sentiment_dist = drug_reviews['sentiment'].value_counts(normalize=True).to_dict()
-            drug_sentiments[drug] = sentiment_dist
+        drug_reviews['sentiment'] = drug_reviews['review'].apply(analyze_sentiment)
+        sentiment_dist = drug_reviews['sentiment'].value_counts(normalize=True).to_dict()
+        drug_sentiments[drug] = sentiment_dist
     
     return top_drugs, disease, drug_sentiments, disease_drugs
 
@@ -192,21 +184,15 @@ data = load_data()
 vectorizer, disease_encoder, disease_model = train_disease_model(data)
 
 # Title and description
-st.title("💊 Patient Condition Classification & Drug Recommendation")
+st.title("💊 Advanced Drug Reviews Analysis Dashboard")
 st.markdown("""
-This dashboard analyzes patient reviews for medications treating:
-- **Depression**
-- **High Blood Pressure** 
-- **Diabetes (Type 2)**
-
-Key features:
-- Classifies patient conditions from symptoms
-- Analyzes drug effectiveness and side effects
-- Provides personalized drug recommendations
+This dashboard provides an in-depth analysis of patient reviews for medications treating **Depression**, 
+**High Blood Pressure**, and **Diabetes (Type 2)**. Explore the data through interactive visualizations 
+and comprehensive sentiment analysis, and get personalized drug recommendations based on symptoms.
 """)
 
-# Sidebar filters
-st.sidebar.header("Data Filters")
+# Sidebar filters (from original file)
+st.sidebar.header("Filter Data")
 selected_conditions = st.sidebar.multiselect(
     "Select conditions to analyze",
     options=data['condition'].unique(),
@@ -214,154 +200,227 @@ selected_conditions = st.sidebar.multiselect(
 )
 
 min_rating, max_rating = st.sidebar.slider(
-    "Select rating range (1-10):",
+    "Select rating range",
     min_value=1,
     max_value=10,
-    value=(4, 8)
+    value=(1, 10)
 )
 
-date_range = st.sidebar.date_input(
-    "Select date range:",
-    value=(data['date'].min(), data['date'].max()),
-    min_value=data['date'].min(),
-    max_value=data['date'].max()
+# Date range filter
+min_date = data['date'].min().to_pydatetime()
+max_date = data['date'].max().to_pydatetime()
+selected_dates = st.sidebar.date_input(
+    "Select date range",
+    value=(min_date, max_date),
+    min_value=min_date,
+    max_value=max_date
 )
 
-# Filter data
+# Filter data based on selections
 filtered_data = data[
     (data['condition'].isin(selected_conditions)) & 
-    (data['rating'].between(min_rating, max_rating)) &
-    (data['date'].between(pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])))
+    (data['rating'] >= min_rating) & 
+    (data['rating'] <= max_rating) &
+    (data['date'] >= pd.to_datetime(selected_dates[0])) &
+    (data['date'] <= pd.to_datetime(selected_dates[1]))
 ]
 
 # Add sentiment analysis
 if not filtered_data.empty:
     filtered_data['sentiment'] = filtered_data['review'].apply(analyze_sentiment)
 
-# Main tabs
+# Main content tabs
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-    "Overview", "Rating Analysis", "Sentiment Insights", 
-    "Condition Comparison", "Review Analysis", "Data Explorer", 
-    "Drug Recommendation"
+    "Overview", "Rating Analysis", "Sentiment Analysis", 
+    "Condition Comparison", "Word Cloud", "Data Explorer", "Drug Recommendation"
 ])
 
-# Overview Tab
+# Drug Recommendation tab
+with tab7:
+    st.header("Drug Recommendation Based on Symptoms")
+    
+    # User input for symptoms
+    symptoms_input = st.text_area("Enter your symptoms (comma separated):", 
+                                "fatigue, sadness, insomnia")
+    
+    if st.button("Get Recommendation"):
+        if symptoms_input.strip():
+            # Get recommendations using the full dataset (not filtered)
+            top_drugs, predicted_disease, drug_sentiments, disease_drugs = recommend_drugs(
+                symptoms_input, data, vectorizer, disease_model, disease_encoder)
+            
+            if top_drugs is not None:
+                st.success(f"Predicted Condition: {predicted_disease}")
+                
+                # Display top recommended drugs
+                st.subheader("Top Recommended Drugs")
+                for i, (drug, row) in enumerate(top_drugs.iterrows(), 1):
+                    with st.expander(f"{i}. {drug} (Avg Rating: {row['rating']:.1f}, Useful Count: {row['usefulCount']:.1f})"):
+                        st.write(f"**Number of Reviews:** {row['review']}")
+                        
+                        # Display sentiment distribution
+                        st.write("**Sentiment Distribution:**")
+                        sentiments = drug_sentiments.get(drug, {})
+                        if sentiments:
+                            sentiment_df = pd.DataFrame.from_dict(sentiments, orient='index', columns=['Percentage'])
+                            sentiment_df['Percentage'] = (sentiment_df['Percentage'] * 100).round(1)
+                            st.dataframe(sentiment_df.style.format({'Percentage': '{:.1f}%'}))
+                        
+                        # Display sample reviews
+                        drug_reviews = disease_drugs[disease_drugs['drugName'] == drug]['review'].sample(min(3, len(disease_drugs[disease_drugs['drugName'] == drug])))
+                        st.write("**Sample Reviews:**")
+                        for review in drug_reviews:
+                            st.write(f"- {review}")
+            else:
+                st.warning("No drugs found for the predicted condition.")
+        else:
+            st.warning("Please enter symptoms to get recommendations.")
+
+# Overview tab (using filtered_data)
 with tab1:
     st.header("Data Overview")
     
     col1, col2, col3 = st.columns(3)
+    
     with col1:
         st.metric("Total Reviews", len(filtered_data))
         st.metric("Unique Drugs", filtered_data['drugName'].nunique())
+    
     with col2:
-        st.metric("Average Rating", f"{filtered_data['rating'].mean():.1f}")
+        avg_rating = filtered_data['rating'].mean()
+        st.metric("Average Rating", f"{avg_rating:.1f}")
         st.metric("Most Reviewed Condition", filtered_data['condition'].value_counts().idxmax())
+    
     with col3:
-        st.metric("Most Common Sentiment", filtered_data['sentiment'].mode()[0])
-        st.metric("Avg Useful Count", f"{filtered_data['usefulCount'].mean():.1f}")
+        most_common_sentiment = filtered_data['sentiment'].value_counts().idxmax()
+        st.metric("Most Common Sentiment", most_common_sentiment)
+        st.metric("Average Useful Count", f"{filtered_data['usefulCount'].mean():.1f}")
     
     st.subheader("Top 10 Drugs by Review Count")
     top_drugs = filtered_data['drugName'].value_counts().nlargest(10)
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plot.subplots(figsize=(10, 6))
     sns.barplot(y=top_drugs.index, x=top_drugs.values, palette="viridis", ax=ax)
     ax.set_title('Top 10 Drugs by Review Count')
     ax.set_xlabel('Number of Reviews')
+    ax.set_ylabel('Drug Name')
     st.pyplot(fig)
     
-    st.subheader("Sample Data Preview")
+    st.subheader("Sample Data")
     st.dataframe(filtered_data.head())
 
-# Rating Analysis Tab
+# Rating Analysis tab (using filtered_data)
 with tab2:
     st.header("Rating Analysis")
     
     col1, col2 = st.columns(2)
+    
     with col1:
         st.subheader("Rating Distribution by Condition")
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plot.subplots(figsize=(10, 6))
         sns.boxplot(data=filtered_data, x='condition', y='rating', palette="Set2", ax=ax)
-        ax.set_title('Rating Distribution by Condition')
+        ax.set_title('Rating Distribution by Medical Condition')
+        ax.set_xlabel('Medical Condition')
+        ax.set_ylabel('Rating')
         st.pyplot(fig)
     
     with col2:
         st.subheader("Rating Distribution")
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plot.subplots(figsize=(10, 6))
         sns.histplot(data=filtered_data, x='rating', hue='condition', 
-                    multiple='stack', bins=10, palette="Set2", ax=ax)
-        ax.set_title('Stacked Rating Distribution')
+                     multiple='stack', bins=10, palette="Set2", ax=ax)
+        ax.set_title('Stacked Rating Distribution by Condition')
+        ax.set_xlabel('Rating')
+        ax.set_ylabel('Count')
         st.pyplot(fig)
     
     st.subheader("Rating Trends Over Time")
-    fig, ax = plt.subplots(figsize=(12, 6))
+    fig, ax = plot.subplots(figsize=(12, 6))
     for condition in filtered_data['condition'].unique():
         condition_data = filtered_data[filtered_data['condition'] == condition]
         trend = condition_data.groupby(condition_data['date'].dt.to_period("M"))['rating'].mean()
         ax.plot(trend.index.astype(str), trend.astype(float), label=condition, marker='o')
-    ax.set_title('Average Rating Trends Over Time')
+    
+    ax.set_title('Average Rating Trends Over Time by Condition')
+    ax.set_xlabel('Month')
+    ax.set_ylabel('Average Rating')
     ax.legend()
-    plt.xticks(rotation=45)
+    plot.xticks(rotation=45)
     st.pyplot(fig)
 
-# Sentiment Insights Tab
+# Sentiment Analysis tab (using filtered_data)
 with tab3:
-    st.header("Sentiment Insights")
+    st.header("Sentiment Analysis")
     
     if not filtered_data.empty:
         col1, col2 = st.columns(2)
+        
         with col1:
             st.subheader("Sentiment Distribution")
             sentiment_counts = filtered_data['sentiment'].value_counts()
-            fig, ax = plt.subplots(figsize=(8, 8))
+            fig, ax = plot.subplots(figsize=(8, 8))
             colors = ['#4CAF50', '#8BC34A', '#FFC107', '#FF9800', '#F44336']
-            ax.pie(sentiment_counts, labels=sentiment_counts.index, 
-                  autopct='%1.1f%%', colors=colors, startangle=90)
+            ax.pie(sentiment_counts, labels=sentiment_counts.index, autopct='%1.1f%%',
+                  colors=colors, startangle=90)
+            ax.set_title('Sentiment Distribution')
             st.pyplot(fig)
         
         with col2:
             st.subheader("Sentiment by Condition")
-            fig, ax = plt.subplots(figsize=(10, 6))
+            fig, ax = plot.subplots(figsize=(10, 6))
             sns.countplot(data=filtered_data, x='condition', hue='sentiment', 
-                         palette="Set2", ax=ax)
+                          palette="Set2", ax=ax)
             ax.set_title('Sentiment Distribution by Condition')
-            ax.legend(title='Sentiment', bbox_to_anchor=(1.05, 1))
+            ax.set_xlabel('Medical Condition')
+            ax.set_ylabel('Count')
+            ax.legend(title='Sentiment')
             st.pyplot(fig)
         
         st.subheader("Sentiment vs Rating Analysis")
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plot.subplots(figsize=(10, 6))
         sns.boxplot(data=filtered_data, x='sentiment', y='rating', 
-                   order=['Strongly Negative', 'Negative', 'Neutral', 
-                         'Positive', 'Strongly Positive'],
+                   order=['Negative', 'Slightly Negative', 'Neutral', 
+                         'Slightly Positive', 'Positive'],
                    palette="RdYlGn", ax=ax)
         ax.set_title('Rating Distribution by Sentiment')
+        ax.set_xlabel('Sentiment')
+        ax.set_ylabel('Rating')
         st.pyplot(fig)
         
         st.subheader("Review Examples by Sentiment")
-        sentiment_choice = st.selectbox("Select sentiment:", 
-                                      ['Strongly Positive', 'Positive', 'Neutral', 
-                                       'Negative', 'Strongly Negative'])
+        sentiment_choice = st.selectbox("Select sentiment to view examples", 
+                                      ['Positive', 'Slightly Positive', 'Neutral', 
+                                       'Slightly Negative', 'Negative'])
+        
         sentiment_reviews = filtered_data[filtered_data['sentiment'] == sentiment_choice]['review']
+        
         if not sentiment_reviews.empty:
-            for i, review in enumerate(sentiment_reviews.sample(min(3, len(sentiment_reviews))), 1):
+            examples = sentiment_reviews.sample(min(5, len(sentiment_reviews)))
+            for i, example in enumerate(examples, 1):
                 st.markdown(f"""
-                <div style="background-color:#f0f2f6; padding:10px; border-radius:5px; margin-bottom:10px;">
-                <b>Example {i}:</b> {review}
+                <div style="background-color:#c2ee96; padding:10px; border-radius:5px; margin-bottom:10px;">
+                <b>Example {i}:</b> {example}
                 </div>
                 """, unsafe_allow_html=True)
         else:
-            st.warning(f"No {sentiment_choice} reviews found")
+            st.warning(f"No {sentiment_choice} reviews found for selected filters")
+    else:
+        st.warning("No data available for selected filters")
 
-# Condition Comparison Tab
+# Condition Comparison tab (using filtered_data)
 with tab4:
     st.header("Condition Comparison")
     
     if not filtered_data.empty:
         col1, col2 = st.columns(2)
+        
         with col1:
             st.subheader("Average Rating by Condition")
-            fig, ax = plt.subplots(figsize=(10, 6))
+            fig, ax = plot.subplots(figsize=(10, 6))
             sns.barplot(data=filtered_data, x='condition', y='rating', 
                        palette="viridis", ci=None, ax=ax)
-            ax.set_title('Average Rating by Condition')
+            ax.set_title('Average Rating by Medical Condition')
+            ax.set_xlabel('Medical Condition')
+            ax.set_ylabel('Average Rating')
             for p in ax.patches:
                 ax.annotate(f"{p.get_height():.1f}", 
                            (p.get_x() + p.get_width() / 2., p.get_height()),
@@ -371,10 +430,12 @@ with tab4:
         
         with col2:
             st.subheader("Usefulness by Condition")
-            fig, ax = plt.subplots(figsize=(10, 6))
+            fig, ax = plot.subplots(figsize=(10, 6))
             sns.barplot(data=filtered_data, x='condition', y='usefulCount', 
-                       palette="magma", ci=None, ax=ax)
-            ax.set_title('Average Useful Count by Condition')
+                        palette="magma", ci=None, ax=ax)
+            ax.set_title('Average Useful Count by Medical Condition')
+            ax.set_xlabel('Medical Condition')
+            ax.set_ylabel('Average Useful Count')
             for p in ax.patches:
                 ax.annotate(f"{p.get_height():.1f}", 
                            (p.get_x() + p.get_width() / 2., p.get_height()),
@@ -382,67 +443,71 @@ with tab4:
                            textcoords='offset points')
             st.pyplot(fig)
         
-        st.subheader("Top Drugs by Condition")
-        condition_choice = st.selectbox("Select condition:", 
+        st.subheader("Drug Effectiveness by Condition")
+        condition_choice = st.selectbox("Select condition to view top drugs", 
                                       filtered_data['condition'].unique())
+        
         condition_data = filtered_data[filtered_data['condition'] == condition_choice]
         top_drugs = condition_data.groupby('drugName')['rating'].mean().nlargest(5)
         
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plot.subplots(figsize=(10, 6))
         sns.barplot(y=top_drugs.index, x=top_drugs.values, palette="coolwarm", ax=ax)
-        ax.set_title(f'Top 5 Drugs for {condition_choice}')
+        ax.set_title(f'Top 5 Drugs for {condition_choice} by Average Rating')
         ax.set_xlabel('Average Rating')
+        ax.set_ylabel('Drug Name')
         st.pyplot(fig)
 
-# Review Analysis Tab
+# Word Cloud tab (using filtered_data)
 with tab5:
-    st.header("Review Analysis")
+    st.header("Review Word Cloud")
     
     if not filtered_data.empty:
         col1, col2 = st.columns(2)
+        
         with col1:
-            st.subheader("Word Cloud by Sentiment")
-            sentiment_choice = st.selectbox("Select sentiment:", 
-                                          ['All'] + filtered_data['sentiment'].unique().tolist())
+            sentiment_choice = st.selectbox("Select sentiment for word cloud", 
+                                          ['All', 'Positive', 'Slightly Positive', 
+                                           'Neutral', 'Slightly Negative', 'Negative'])
             
             if sentiment_choice == 'All':
                 text = " ".join(review for review in filtered_data['review'])
-                title = "All Reviews"
+                title = "Word Cloud for All Reviews"
             else:
                 text = " ".join(review for review in 
-                               filtered_data[filtered_data['sentiment'] == sentiment_choice]['review'])
-                title = f"{sentiment_choice} Reviews"
+                              filtered_data[filtered_data['sentiment'] == sentiment_choice]['review'])
+                title = f"Word Cloud for {sentiment_choice} Reviews"
             
-            wordcloud = WordCloud(width=800, height=400, background_color='white',
+            wordcloud = WordCloud(width=800, height=400, background_color='Green', 
                                 stopwords=STOPWORDS, max_words=100, colormap='viridis').generate(text)
-            fig, ax = plt.subplots(figsize=(10, 5))
+            
+            fig, ax = plot.subplots(figsize=(10, 5))
             ax.imshow(wordcloud, interpolation='bilinear')
             ax.set_title(title, pad=20)
             ax.axis('off')
             st.pyplot(fig)
         
         with col2:
-            st.subheader("Word Cloud by Condition")
-            condition_choice = st.selectbox("Select condition:", 
+            condition_choice = st.selectbox("Select condition for word cloud", 
                                           ['All'] + filtered_data['condition'].unique().tolist())
             
             if condition_choice == 'All':
                 text = " ".join(review for review in filtered_data['review'])
-                title = "All Conditions"
+                title = "Word Cloud for All Conditions"
             else:
                 text = " ".join(review for review in 
-                               filtered_data[filtered_data['condition'] == condition_choice]['review'])
-                title = f"{condition_choice} Reviews"
+                              filtered_data[filtered_data['condition'] == condition_choice]['review'])
+                title = f"Word Cloud for {condition_choice} Reviews"
             
-            wordcloud = WordCloud(width=800, height=400, background_color='white',
+            wordcloud = WordCloud(width=800, height=400, background_color='Green', 
                                 stopwords=STOPWORDS, max_words=100, colormap='plasma').generate(text)
-            fig, ax = plt.subplots(figsize=(10, 5))
+            
+            fig, ax = plot.subplots(figsize=(10, 5))
             ax.imshow(wordcloud, interpolation='bilinear')
             ax.set_title(title, pad=20)
             ax.axis('off')
             st.pyplot(fig)
 
-# Data Explorer Tab
+# Data Explorer tab (using filtered_data)
 with tab6:
     st.header("Data Explorer")
     
@@ -450,88 +515,35 @@ with tab6:
     st.dataframe(filtered_data)
     
     st.subheader("Export Data")
-    if st.button("Download as CSV"):
+    if st.button("Download Filtered Data as CSV"):
         csv = filtered_data.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="Download CSV",
             data=csv,
-            file_name="drug_reviews.csv",
+            file_name="filtered_drug_reviews.csv",
             mime="text/csv"
         )
 
-# Drug Recommendation Tab
-with tab7:
-    st.header("Personalized Drug Recommendation")
-    
-    with st.expander("💡 Symptom Examples"):
-        st.markdown("""
-        - **Depression:** sadness, fatigue, hopelessness
-        - **High BP:** headache, dizziness, nosebleeds
-        - **Diabetes:** thirst, frequent urination, blurry vision
-        """)
-    
-    symptoms_input = st.text_area(
-        "Describe your symptoms:", 
-        "headache dizziness",
-        help="Enter symptoms separated by commas or spaces"
-    )
-    
-    if st.button("Get Recommendations", type="primary"):
-        if symptoms_input.strip():
-            with st.spinner("Analyzing symptoms and finding best options..."):
-                top_drugs, condition, drug_sentiments, disease_drugs = recommend_drugs(
-                    symptoms_input, data, vectorizer, disease_model, disease_encoder)
-                
-            if top_drugs is not None:
-                st.success(f"Most likely condition: **{condition}**")
-                
-                st.subheader("Recommended Medications")
-                for i, (drug, row) in enumerate(top_drugs.iterrows(), 1):
-                    with st.expander(f"{i}. {drug} (Score: {row['score']:.1f})"):
-                        cols = st.columns(2)
-                        with cols[0]:
-                            st.metric("Avg Rating", f"{row['rating']:.1f}/10")
-                            st.metric("Useful Reviews", row['review'])
-                        with cols[1]:
-                            st.metric("Usefulness Score", f"{row['usefulCount']:.1f}")
-                        
-                        if drug in drug_sentiments:
-                            sentiments = drug_sentiments[drug]
-                            fig, ax = plt.subplots()
-                            ax.pie(
-                                sentiments.values(),
-                                labels=sentiments.keys(),
-                                autopct='%1.1f%%',
-                                colors=['#4CAF50', '#8BC34A', '#FFC107', '#FF9800', '#F44336']
-                            )
-                            st.pyplot(fig)
-                        
-                        reviews = disease_drugs[disease_drugs['drugName'] == drug]['review']
-                        if not reviews.empty:
-                            st.write("**Patient Experiences:**")
-                            for review in reviews.sample(min(3, len(reviews))):
-                                highlighted = re.sub(
-                                    r'(side effect|dizziness|nausea|headache|fatigue)',
-                                    r'<span style="color:red;font-weight:bold">\1</span>',
-                                    review,
-                                    flags=re.IGNORECASE
-                                )
-                                st.markdown(f"- {highlighted}", unsafe_allow_html=True)
-            else:
-                st.warning("No suitable medications found for the predicted condition")
-        else:
-            st.warning("Please enter symptoms to get recommendations")
-
-# Footer
+# Add requirements.txt for deployment
 st.sidebar.markdown("""
-### Model Information
-- **Algorithm:** Random Forest Classifier
-- **Features:** Symptom descriptions (TF-IDF vectorized)
-- **Target:** Medical condition
+**Deployment requirements.txt:**
+streamlit
+pandas
+numpy
+matplotlib
+seaborn
+wordcloud
+textblob
+python-dateutil
+scikit-learn
+nltk
+joblib
 """)
 
+# Add some space at the bottom
 st.markdown("---")
 st.markdown("""
-**Clinical Decision Support System**  
-*This tool provides informational recommendations only and should not replace professional medical advice.*
+**Note:** This application analyzes patient reviews for Depression, High Blood Pressure, and Diabetes (Type 2) medications.
+The sentiment analysis categorizes reviews into five categories for more nuanced understanding.
+The drug recommendation system suggests medications based on symptoms.
 """)

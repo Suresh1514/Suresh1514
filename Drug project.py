@@ -266,16 +266,20 @@ with tab7:
                             sentiment_df['Percentage'] = (sentiment_df['Percentage'] * 100).round(1)
                             st.dataframe(sentiment_df.style.format({'Percentage': '{:.1f}%'}))
                         
-                        # Display sample reviews
-                        drug_reviews = disease_drugs[disease_drugs['drugName'] == drug]['review'].sample(min(3, len(disease_drugs[disease_drugs['drugName'] == drug])))
-                        st.write("**Sample Reviews:**")
-                        for review in drug_reviews:
-                            st.write(f"- {review}")
+                        # Display sample reviews - filter out any empty reviews
+                        drug_reviews = disease_drugs[(disease_drugs['drugName'] == drug) & 
+                                                    (disease_drugs['review'].notna())]['review']
+                        if not drug_reviews.empty:
+                            sample_reviews = drug_reviews.sample(min(3, len(drug_reviews)))
+                            st.write("**Sample Reviews:**")
+                            for review in sample_reviews:
+                                st.write(f"- {review}")
+                        else:
+                            st.write("No reviews available for this drug.")
             else:
                 st.warning("No drugs found for the predicted condition.")
         else:
             st.warning("Please enter symptoms to get recommendations.")
-
 # Overview tab (using filtered_data)
 with tab1:
     st.header("Data Overview")

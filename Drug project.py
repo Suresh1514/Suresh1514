@@ -7,238 +7,222 @@ import numpy as np
 from textblob import TextBlob
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import LabelEncoder
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.metrics import accuracy_score
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-from nltk.tokenize import word_tokenize
 import nltk
-from imblearn.over_sampling import SMOTE
-from sklearn.pipeline import Pipeline
-from sklearn.feature_selection import SelectKBest, chi2
 
+# Download NLTK resources
 nltk.download('stopwords')
 nltk.download('wordnet')
 nltk.download('punkt')
 
 st.set_page_config(page_title="Review-Based Disease Prediction & Drug Recommendation", layout="wide")
 
-# Enhanced text preprocessing
+# Initialize session state
+if 'model_trained' not in st.session_state:
+    st.session_state.model_trained = False
+
 def preprocess_text(text):
-    # Convert to lowercase
-    text = text.lower()
+    try:
+        if not isinstance(text, str) or not text.strip():
+            return ""
+        
+        text = text.lower()
+        text = re.sub(r'[^a-zA-Z\s]', '', text)
+        words = word_tokenize(text)
+        stop_words = set(stopwords.words('english'))
+        lemmatizer = WordNetLemmatizer()
+        words = [lemmatizer.lemmatize(word) for word in words if word not in stop_words]
+        words = [word for word in words if len(word) > 2]
+        return ' '.join(words)
+    except Exception as e:
+        st.error(f"Text preprocessing error: {e}")
+        return ""
+
+def create_sample_dataset():
+    # More comprehensive sample dataset
+    conditions = ['Depression', 'High Blood Pressure', 'Diabetes, Type 2']
     
-    # Remove special characters and numbers
-    text = re.sub(r'[^a-zA-Z\s]', '', text)
+    depression_reviews = [
+        "This medication helped with my depression and anxiety",
+        "I feel much better after taking this for my depressive symptoms",
+        "Effective for treating major depressive disorder",
+        "Improved my mood significantly within weeks",
+        "Reduced my depressive thoughts and improved sleep"
+    ]
     
-    # Tokenization
-    words = word_tokenize(text)
+    bp_reviews = [
+        "Effectively controls my high blood pressure",
+        "Lowered my BP to normal levels with no side effects",
+        "Great for hypertension management",
+        "Works well to maintain healthy blood pressure",
+        "My doctor is pleased with my BP numbers now"
+    ]
     
-    # Remove stopwords
-    stop_words = set(stopwords.words('english'))
-    words = [word for word in words if word not in stop_words]
+    diabetes_reviews = [
+        "Helped lower my blood sugar levels effectively",
+        "Good for managing type 2 diabetes",
+        "Reduced my A1C significantly",
+        "Controls my glucose levels throughout the day",
+        "Essential part of my diabetes treatment plan"
+    ]
     
-    # Lemmatization
-    lemmatizer = WordNetLemmatizer()
-    words = [lemmatizer.lemmatize(word) for word in words]
+    drugs = {
+        'Depression': ['Prozac', 'Zoloft', 'Lexapro', 'Paxil', 'Effexor'],
+        'High Blood Pressure': ['Lisinopril', 'Atenolol', 'Losartan', 'Amlodipine', 'Valsartan'],
+        'Diabetes, Type 2': ['Metformin', 'Glipizide', 'Januvia', 'Actos', 'Victoza']
+    }
     
-    # Remove short words (length < 3)
-    words = [word for word in words if len(word) > 2]
+    data = []
+    for condition in conditions:
+        reviews = depression_reviews if condition == 'Depression' else bp_reviews if condition == 'High Blood Pressure' else diabetes_reviews
+        for i, drug in enumerate(drugs[condition]):
+            for j in range(5):  # Create 5 reviews per drug
+                rating = np.random.uniform(8.0, 9.5)
+                data.append({
+                    'drugName': drug,
+                    'condition': condition,
+                    'review': reviews[j],
+                    'rating': round(rating, 1)
+                })
     
-    return ' '.join(words)
+    return pd.DataFrame(data)
 
 @st.cache_data
 def load_data():
     try:
-        # Expanded sample dataset with more examples
-        sample_data = {
-            'drugName': ['Prozac', 'Lisinopril', 'Metformin', 'Zoloft', 'Atenolol', 'Glipizide',
-                        'Lexapro', 'Hydrochlorothiazide', 'Januvia', 'Paxil', 'Effexor', 'Amlodipine',
-                        'Glucophage', 'Celexa', 'Losartan', 'Actos', 'Wellbutrin', 'Valsartan',
-                        'Victoza', 'Cymbalta'],
-            'condition': ['Depression', 'High Blood Pressure', 'Diabetes, Type 2', 
-                          'Depression', 'High Blood Pressure', 'Diabetes, Type 2',
-                          'Depression', 'High Blood Pressure', 'Diabetes, Type 2', 'Depression',
-                          'Depression', 'High Blood Pressure', 'Diabetes, Type 2', 'Depression',
-                          'High Blood Pressure', 'Diabetes, Type 2', 'Depression', 'High Blood Pressure',
-                          'Diabetes, Type 2', 'Depression'],
-            'review': [
-                'This medication significantly improved my mood and reduced my depressive symptoms',
-                'Effectively controls my hypertension with minimal side effects',
-                'Great for managing my type 2 diabetes and blood sugar levels',
-                'Helped with my depression but caused some initial nausea',
-                'Works well for blood pressure though sometimes makes me dizzy',
-                'Excellent for glucose control in my type 2 diabetes',
-                'My anxiety and depression have improved dramatically',
-                'Perfect for my high blood pressure management',
-                'Works wonders for my diabetes with no noticeable side effects',
-                'Took several weeks but eventually helped my depressive symptoms',
-                'Venlafaxine changed my life, depression is much better',
-                'Amlodipine keeps my blood pressure perfectly controlled',
-                'Metformin is essential for my type 2 diabetes treatment',
-                'Citalopram helped stabilize my mood swings',
-                'Losartan is excellent for my hypertension',
-                'Pioglitazone helps control my blood sugar effectively',
-                'Bupropion gave me energy and helped with depression',
-                'Valsartan works better than previous blood pressure meds',
-                'Liraglutide helped me lose weight and control diabetes',
-                'Duloxetine works well for both my pain and depression'
-            ],
-            'rating': [9.5, 9.0, 9.2, 8.0, 8.5, 9.1, 9.3, 9.0, 9.4, 8.2, 
-                      9.6, 9.1, 9.3, 8.8, 9.2, 8.9, 9.0, 9.3, 9.5, 9.1]
-        }
-        
-        # Create multiple variations of each review to expand the dataset
-        expanded_data = []
-        for i in range(len(sample_data['drugName'])):
-            for variation in range(5):  # Create 5 variations of each review
-                new_review = sample_data['review'][i]
-                if variation == 1:
-                    new_review = new_review.replace('.', '!')
-                elif variation == 2:
-                    new_review = new_review + " I highly recommend it."
-                elif variation == 3:
-                    new_review = "After using this, " + new_review.lower()
-                elif variation == 4:
-                    new_review = new_review.replace("my", "our")
-                
-                expanded_data.append({
-                    'drugName': sample_data['drugName'][i],
-                    'condition': sample_data['condition'][i],
-                    'review': new_review,
-                    'rating': sample_data['rating'][i] - (variation * 0.1)  # Slight rating variation
-                })
-        
-        data = pd.DataFrame(expanded_data)
-        return data
+        return create_sample_dataset()
     except Exception as e:
-        st.error(f"Failed to load dataset: {e}")
+        st.error(f"Failed to create dataset: {e}")
         return pd.DataFrame()
 
 def train_model(data):
     try:
-        # Enhanced text processing
+        if data.empty:
+            st.error("No data available for training")
+            return None, None, None
+        
+        # Preprocess data
         data['processed_review'] = data['review'].apply(preprocess_text)
+        data = data[data['processed_review'].str.len() > 0]  # Remove empty reviews
         
-        # Sentiment analysis features
-        data['sentiment'] = data['review'].apply(lambda x: TextBlob(x).sentiment.polarity)
-        data['subjectivity'] = data['review'].apply(lambda x: TextBlob(x).sentiment.subjectivity)
+        if len(data) == 0:
+            st.error("No valid reviews after preprocessing")
+            return None, None, None
         
-        # TF-IDF with optimized parameters
+        # Feature engineering
         vectorizer = TfidfVectorizer(
-            max_features=5000,
-            ngram_range=(1, 3),
-            stop_words='english',
-            min_df=2,
-            max_df=0.95
+            max_features=2000,
+            ngram_range=(1, 2),
+            stop_words='english'
         )
         
-        X_text = vectorizer.fit_transform(data['processed_review'])
-        
-        # Combine text features with sentiment features
-        X_sentiment = data[['sentiment', 'subjectivity']].values
-        X = np.hstack((X_text.toarray(), X_sentiment))
-        
-        # Encode labels
+        X = vectorizer.fit_transform(data['processed_review'])
         le = LabelEncoder()
         y = le.fit_transform(data['condition'])
         
-        # Split data
+        # Train-test split
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.15, random_state=42, stratify=y
+            X, y, test_size=0.2, random_state=42, stratify=y
         )
         
-        # Handle class imbalance
-        smote = SMOTE(random_state=42)
-        X_train, y_train = smote.fit_resample(X_train, y_train)
-        
-        # Optimized model with hyperparameter tuning
+        # Train model
         model = GradientBoostingClassifier(
-            n_estimators=300,
-            learning_rate=0.05,
-            max_depth=5,
-            min_samples_split=10,
-            min_samples_leaf=5,
+            n_estimators=200,
+            learning_rate=0.1,
+            max_depth=3,
             random_state=42
         )
         
         model.fit(X_train, y_train)
         
-        # Evaluate model
+        # Evaluate
         y_pred = model.predict(X_test)
         acc = accuracy_score(y_test, y_pred)
-        report = classification_report(y_test, y_pred, target_names=le.classes_)
         
-        st.sidebar.success(f"Model Accuracy: {acc:.2f}")
-        st.sidebar.text("Classification Report:\n" + report)
+        st.sidebar.success(f"Model trained successfully (Accuracy: {acc:.2f})")
+        st.session_state.model_trained = True
         
         return vectorizer, le, model
-    
+        
     except Exception as e:
         st.error(f"Model training failed: {e}")
         return None, None, None
 
-def predict_and_recommend(review_text, data, vectorizer, model, encoder):
+def predict_condition(review_text, vectorizer, model, encoder):
     try:
-        # Preprocess the input text
         processed = preprocess_text(review_text)
+        if not processed:
+            return None
         
-        # Get sentiment features
-        sentiment = TextBlob(review_text).sentiment.polarity
-        subjectivity = TextBlob(review_text).sentiment.subjectivity
-        
-        # Vectorize the text
-        text_vector = vectorizer.transform([processed]).toarray()
-        
-        # Combine with sentiment features
-        features = np.hstack((text_vector, [[sentiment, subjectivity]]))
-        
-        # Make prediction
-        condition = encoder.inverse_transform(model.predict(features))[0]
-        
-        # Get top recommendations
-        top_drugs = (
+        vector = vectorizer.transform([processed])
+        prediction = model.predict(vector)
+        return encoder.inverse_transform(prediction)[0]
+    except Exception as e:
+        st.error(f"Prediction failed: {e}")
+        return None
+
+def get_recommendations(condition, data, top_n=3):
+    try:
+        return (
             data[data['condition'] == condition]
             .groupby('drugName')['rating']
             .mean()
             .sort_values(ascending=False)
-            .head(5)  # Show top 5 recommendations
+            .head(top_n)
         )
-        
-        return condition, top_drugs
-    
     except Exception as e:
-        st.error(f"Prediction failed: {e}")
-        return None, None
+        st.error(f"Failed to get recommendations: {e}")
+        return pd.Series()
 
+# Main App
 st.title("💊 Disease Prediction and Drug Recommendation from Review Text")
 
+# Load data
 data = load_data()
 
 if not data.empty:
-    vectorizer, encoder, model = train_model(data)
-
-    st.markdown("### ✍️ Enter a Review Below")
-    review_input = st.text_area("Example: 'This medicine helped lower my blood sugar and gave me energy.'",
-                              height=150)
-
-    if st.button("Predict & Recommend"):
-        if review_input.strip():
-            condition, recommendations = predict_and_recommend(review_input, data, vectorizer, model, encoder)
-            if condition:
-                st.success(f"🩺 Predicted Condition: **{condition}**")
-                st.markdown("### 💊 Top Recommended Drugs:")
-                for drug, rating in recommendations.items():
-                    st.markdown(f"- **{drug}** — Avg Rating: {rating:.1f}")
+    # Train model (only once)
+    if not st.session_state.model_trained:
+        with st.spinner("Training model... Please wait"):
+            vectorizer, encoder, model = train_model(data)
+    else:
+        vectorizer, encoder, model = st.session_state.get('vectorizer'), st.session_state.get('encoder'), st.session_state.get('model')
+    
+    if model:
+        # User input
+        st.markdown("### ✍️ Enter a Patient Review Below")
+        review_input = st.text_area(
+            "Example: 'This medicine helped lower my blood sugar and gave me energy.'",
+            height=150,
+            key="review_input"
+        )
+        
+        if st.button("Predict & Recommend"):
+            if review_input.strip():
+                # Make prediction
+                condition = predict_condition(review_input, vectorizer, model, encoder)
                 
-                # Show similar reviews from training data
-                st.markdown("### 📝 Similar Reviews from Training Data:")
-                similar_reviews = data[data['condition'] == condition].sample(3)
-                for idx, row in similar_reviews.iterrows():
-                    st.markdown(f"- \"{row['review']}\" (Rating: {row['rating']})")
-        else:
-            st.warning("Please enter a review to proceed.")
+                if condition:
+                    st.success(f"🩺 Predicted Condition: **{condition}**")
+                    
+                    # Get recommendations
+                    recommendations = get_recommendations(condition, data)
+                    
+                    if not recommendations.empty:
+                        st.markdown("### 💊 Top Recommended Drugs:")
+                        for drug, rating in recommendations.items():
+                            st.markdown(f"- **{drug}** — Avg Rating: {rating:.1f}")
+                    else:
+                        st.warning("No recommendations found for this condition")
+                else:
+                    st.warning("Could not predict condition from the review")
+            else:
+                st.warning("Please enter a review to proceed")
+    else:
+        st.error("Model not available. Please try again.")
 else:
-    st.warning("Failed to load dataset. Please try again later.")
+    st.error("No data available. Please check the dataset.")

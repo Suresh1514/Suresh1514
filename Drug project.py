@@ -5,12 +5,55 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 import joblib
 import streamlit as st
+import os
 
-# Function to load dataset with proper error handling
+# Function to load dataset with comprehensive error handling
 def load_data():
     try:
-        # Load your dataset - replace with your actual file path
-        data = pd.read_csv("drugsCom_raw.xlsx")  # or .xlsx for Excel files
+        # Define possible file locations
+        possible_paths = [
+            "drugsCom_raw.xlsx",                # Same directory
+            "data/drugsCom_raw.xlsx",           # In a data subfolder
+            "../drugsCom_raw.xlsx",             # One level up
+            "./data/drugsCom_raw.xlsx"          # Current directory data subfolder
+        ]
+        
+        data = None
+        file_found = False
+        
+        # Try all possible file locations
+        for path in possible_paths:
+            try:
+                if os.path.exists(path):
+                    st.info(f"Found file at: {path}")
+                    data = pd.read_excel(path)
+                    file_found = True
+                    st.success("Successfully loaded dataset!")
+                    break
+            except Exception as e:
+                st.warning(f"Tried {path} but failed with error: {str(e)}")
+                continue
+        
+        if not file_found:
+            st.error("Could not find drugsCom_raw.xlsx in any of these locations:")
+            st.code("\n".join(possible_paths))
+            st.warning("Using sample data instead")
+            
+            # Sample data fallback
+            sample_data = {
+                'review': [
+                    "This medication helped with my depression symptoms",
+                    "Effective at controlling my blood pressure",
+                    "Great for managing my type 2 diabetes",
+                    "Didn't help my depression at all",
+                    "Lowered my blood pressure but caused dizziness"
+                ],
+                'drugName': ['Prozac', 'Lisinopril', 'Metformin', 'Zoloft', 'Amlodipine'],
+                'condition': ['Depression', 'High Blood Pressure', 'Diabetes, Type 2', 
+                            'Depression', 'High Blood Pressure'],
+                'rating': [9, 7, 8, 3, 6]
+            }
+            return pd.DataFrame(sample_data)
         
         # Clean and standardize condition names
         condition_mapping = {
@@ -18,78 +61,77 @@ def load_data():
             'diabetes': 'Diabetes, Type 2',
             'type 2 diabetes': 'Diabetes, Type 2',
             'high blood pressure': 'High Blood Pressure',
-            'hypertension': 'High Blood Pressure'
+            'hypertension': 'High Blood Pressure',
+            'blood pressure': 'High Blood Pressure',
+            'diabetes mellitus, type 2': 'Diabetes, Type 2'
         }
         
         # Convert conditions to standard format
         if 'condition' in data.columns:
-            data['condition'] = data['condition'].str.lower().map(condition_mapping).fillna('None')
+            data['condition'] = (data['condition']
+                                .astype(str)
+                                .str.lower()
+                                .str.strip()
+                                .map(condition_mapping)
+            
+            # Remove rows with None/mapped conditions
+            data = data[data['condition'].isin(['Depression', 'Diabetes, Type 2', 'High Blood Pressure'])]
         else:
-            st.error("Dataset is missing 'condition' column")
+            st.error("Your dataset is missing the 'condition' column")
             return pd.DataFrame()
-        
-        # Filter for only our target conditions
-        valid_conditions = ['Depression', 'Diabetes, Type 2', 'High Blood Pressure']
-        data = data[data['condition'].isin(valid_conditions)]
         
         # Verify required columns exist
         required_columns = ['review', 'drugName', 'condition', 'rating']
-        for col in required_columns:
-            if col not in data.columns:
-                st.error(f"Dataset is missing required column: {col}")
-                return pd.DataFrame()
-                
+        missing_cols = [col for col in required_columns if col not in data.columns]
+        
+        if missing_cols:
+            st.error(f"Dataset is missing required columns: {', '.join(missing_cols)}")
+            return pd.DataFrame()
+        
         return data[required_columns].dropna()
     
     except Exception as e:
-        st.error(f"Error loading dataset: {e}")
-        # Fallback to sample data
-        return pd.DataFrame({
-            'review': [
-                "This helped with my depression and anxiety",
-                "Effective for lowering blood pressure",
-                "Controls my blood sugar levels well"
-            ],
-            'drugName': ['Prozac', 'Lisinopril', 'Metformin'],
-            'condition': ['Depression', 'High Blood Pressure', 'Diabetes, Type 2'],
-            'rating': [9, 7, 8]
-        })
+        st.error(f"Unexpected error loading data: {str(e)}")
+        return pd.DataFrame()
 
 # Train or load the prediction model
 def get_prediction_model(data):
     model_path = "drug_condition_model.joblib"
     
     try:
-        model = joblib.load(model_path)
-        return model
+        if os.path.exists(model_path):
+            return joblib.load(model_path)
     except:
-        # Only train if we have sufficient data
-        if len(data) < 10 or data['condition'].nunique() < 2:
-            return None
-            
-        X = data['review']
-        y = data['condition']
+        st.warning("Could not load existing model, will train new one")
+    
+    # Only train if we have sufficient data
+    if len(data) < 10:
+        st.warning("Insufficient data to train model")
+        return None
         
-        # Split data
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
-        
-        # Create model pipeline
-        model = Pipeline([
-            ('tfidf', TfidfVectorizer(max_features=1000, stop_words='english')),
-            ('clf', RandomForestClassifier(n_estimators=100, random_state=42))
-        ])
-        
-        # Train model
-        model.fit(X_train, y_train)
-        
-        # Save model
-        joblib.dump(model, model_path)
-        
-        return model
+    X = data['review']
+    y = data['condition']
+    
+    # Split data
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+    
+    # Create model pipeline
+    model = Pipeline([
+        ('tfidf', TfidfVectorizer(max_features=1000, stop_words='english')),
+        ('clf', RandomForestClassifier(n_estimators=100, random_state=42))
+    ])
+    
+    # Train model
+    model.fit(X_train, y_train)
+    
+    # Save model
+    joblib.dump(model, model_path)
+    
+    return model
 
-# Prediction function with condition filtering
+# Prediction function
 def predict_condition(model, review_text):
     if not review_text or model is None:
         return None
@@ -100,32 +142,37 @@ def predict_condition(model, review_text):
 
 # Main Streamlit app
 def main():
-    st.title("Medical Condition Prediction System")
-    st.write("Describe your symptoms to predict possible conditions")
+    st.title("Drug Condition Prediction System")
+    st.markdown("Analyze patient reviews to predict medical conditions")
     
     # Load data
     data = load_data()
     
+    if data.empty:
+        st.error("No valid data available. Please check your dataset.")
+        return
+    
     # Train model
     model = get_prediction_model(data)
     
-    # User input
-    review_text = st.text_area("Describe your symptoms:")
+    # User interface
+    st.sidebar.header("Patient Review Analysis")
+    review_text = st.sidebar.text_area("Enter patient review or symptoms:")
     
-    if st.button("Predict Condition"):
+    if st.sidebar.button("Predict Condition"):
         if review_text:
-            with st.spinner("Analyzing your symptoms..."):
+            with st.spinner("Analyzing review..."):
                 prediction = predict_condition(model, review_text)
                 
                 if prediction:
-                    st.subheader("Prediction Results")
+                    st.subheader("Prediction Result")
                     
                     if prediction == 'None':
-                        st.warning("Symptoms don't match target conditions (Depression, Diabetes Type 2, High Blood Pressure)")
+                        st.warning("Review doesn't match target conditions")
                     else:
-                        st.success(f"Predicted condition: {prediction}")
+                        st.success(f"Predicted Condition: {prediction}")
                         
-                        # Show top medications for predicted condition
+                        # Show top medications
                         st.subheader("Common Medications")
                         top_meds = (data[data['condition'] == prediction]
                                    .groupby('drugName')['rating']
@@ -134,21 +181,12 @@ def main():
                                    .head(5))
                         
                         for med, rating in top_meds.items():
-                            st.write(f"- {med} (Avg rating: {rating:.1f}/10)")
-                            
-                        # Show sample reviews
-                        st.subheader("Example Patient Experiences")
-                        sample_reviews = data[data['condition'] == prediction].sample(3)
-                        for _, row in sample_reviews.iterrows():
-                            st.markdown(f"""
-                            <div style="background-color:#f0f2f6; padding:10px; border-radius:5px; margin-bottom:10px;">
-                            <b>Rating {row['rating']}/10:</b> {row['review']}
-                            </div>
-                            """, unsafe_allow_html=True)
+                            st.write(f"• {med} (Avg rating: {rating:.1f}/10)")
+                
                 else:
-                    st.error("Could not generate prediction")
+                    st.error("Could not make prediction")
         else:
-            st.warning("Please describe your symptoms")
+            st.warning("Please enter a review to analyze")
 
 if __name__ == "__main__":
     main()

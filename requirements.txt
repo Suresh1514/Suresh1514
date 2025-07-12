@@ -10,4 +10,4 @@ scikit-learn
 scipy
 joblib
 openpyxl
-WordListCorpusReade
+

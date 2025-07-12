@@ -6,6 +6,15 @@ from sklearn.pipeline import Pipeline
 import joblib
 import streamlit as st
 
+
+# Set page configuration
+st.set_page_config(
+    page_title="Drug Reviews Analysis",
+    page_icon="💊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 # Sample data with specific conditions
 def load_data():
     data = pd.DataFrame({

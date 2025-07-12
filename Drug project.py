@@ -10,7 +10,7 @@ import streamlit as st
 def load_data():
     try:
         # Load your dataset - replace with your actual file path
-        data = pd.read_csv("drugsComTrain_raw.csv")  # or .xlsx for Excel files
+        data = pd.read_Excel("drugsCom_raw.xlsx")  # or .xlsx for Excel files
         
         # Clean and standardize condition names
         condition_mapping = {

@@ -19,12 +19,11 @@ nltk.download('stopwords')
 nltk.download('wordnet')
 nltk.download('omw-1.4')
 
-# Load the dataset (replace with your actual dataset path)
 @st.cache_data
 def load_data():
     try:
-        # Try to load the actual dataset first
-        df = pd.read_excel('drugsCom_raw.xlsx')
+        # Try to load the actual dataset first with explicit engine specification
+        df = pd.read_excel('drugsCom_raw.xlsx', engine='openpyxl')
         
         # Check if we have the required columns
         required_columns = ['DrugName', 'condition', 'review', 'rating', 'date', 'usefulCount']

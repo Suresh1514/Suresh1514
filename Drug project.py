@@ -3,55 +3,71 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
-from sklearn.multioutput import MultiOutputClassifier
 import joblib
 import streamlit as st
 
-# Sample data (replace with your actual dataset loading)
+# Sample data with specific conditions
 def load_data():
-    # This should be replaced with your actual data loading code
     data = pd.DataFrame({
         'review': [
             "This helped with my depression and anxiety",
             "Effective for lowering blood pressure",
             "Controls my blood sugar levels well",
             "Made me feel more anxious and depressed",
-            "Reduced my blood pressure but caused dizziness"
+            "Reduced my blood pressure but caused dizziness",
+            "Helps manage my diabetes effectively",
+            "Not working for my depression symptoms",
+            "Great for hypertension control",
+            "Stabilized my mood and depression",
+            "Blood pressure is now under control",
+            "My A1C levels improved significantly",
+            "Still feeling depressed despite medication"
         ],
-        'drugName': ['Prozac', 'Lisinopril', 'Metformin', 'Zoloft', 'Amlodipine'],
-        'condition': ['Depression', 'High Blood Pressure', 'Diabetes', 'Depression', 'High Blood Pressure'],
-        'rating': [9, 7, 8, 4, 6]
+        'drugName': ['Prozac', 'Lisinopril', 'Metformin', 'Zoloft', 'Amlodipine',
+                    'Empagliflozin', 'Fluoxetine', 'Losartan', 'Sertraline',
+                    'Hydrochlorothiazide', 'Glipizide', 'Lexapro'],
+        'condition': ['Depression', 'High Blood Pressure', 'Diabetes, Type 2', 
+                     'Depression', 'High Blood Pressure', 'Diabetes, Type 2',
+                     'Depression', 'High Blood Pressure', 'Depression',
+                     'High Blood Pressure', 'Diabetes, Type 2', 'Depression'],
+        'rating': [9, 7, 8, 4, 6, 8, 3, 9, 7, 8, 9, 5]
     })
+    return data
+
+# Filter conditions to only the three we want
+def filter_conditions(data):
+    valid_conditions = ['Depression', 'Diabetes, Type 2', 'High Blood Pressure']
+    data['condition'] = data['condition'].apply(
+        lambda x: x if x in valid_conditions else 'None'
+    )
     return data
 
 # Train or load the recommendation model
 def get_recommendation_model(data):
-    model_path = "drug_recommendation_model.joblib"
+    model_path = "condition_prediction_model.joblib"
     
     try:
-        # Try to load existing model
         model = joblib.load(model_path)
         return model
     except:
-        # Prepare data for multi-output prediction
+        # Prepare data
+        data = filter_conditions(data)
         X = data['review']
-        y = data[['drugName', 'condition', 'rating']]
+        y = data['condition']
         
-        # Convert rating to categories for classification
-        y['rating'] = pd.cut(y['rating'], bins=[0, 4, 7, 10], 
-                            labels=['Low', 'Medium', 'High'])
+        # Only train if we have enough data
+        if len(data) < 10 or y.nunique() < 2:
+            return None
         
         # Split data
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=42
         )
         
-        # Create pipeline for multi-output classification
+        # Create pipeline
         model = Pipeline([
             ('tfidf', TfidfVectorizer(max_features=1000, stop_words='english')),
-            ('clf', MultiOutputClassifier(
-                RandomForestClassifier(n_estimators=100, random_state=42)
-            ))
+            ('clf', RandomForestClassifier(n_estimators=100, random_state=42))
         ])
         
         # Train model
@@ -62,75 +78,59 @@ def get_recommendation_model(data):
         
         return model
 
-# Predict function
-def predict_recommendation(model, review_text):
-    if not review_text:
+# Predict function with condition filtering
+def predict_condition(model, review_text):
+    if not review_text or model is None:
         return None
     
     # Make prediction
-    pred = model.predict([review_text])
+    pred = model.predict([review_text])[0]
     
-    # Get probabilities for each class (more complex in multi-output)
-    # For simplicity, we'll just return the predictions here
-    # In a production system, you'd want to get probabilities too
-    
-    return {
-        'drug': pred[0][0],
-        'condition': pred[0][1],
-        'rating_category': pred[0][2]
-    }
+    # Only return our three target conditions, otherwise return None
+    valid_conditions = ['Depression', 'Diabetes, Type 2', 'High Blood Pressure']
+    return pred if pred in valid_conditions else 'None'
 
 # Streamlit interface
 def main():
-    st.title("Drug Recommendation System")
-    st.write("Enter your symptoms or medication experience to get recommendations")
+    st.title("Medical Condition Prediction System")
+    st.write("Describe your symptoms to predict possible conditions")
     
-    # Load data
+    # Load and prepare data
     data = load_data()
+    data = filter_conditions(data)
     
     # Get model
     model = get_recommendation_model(data)
     
     # User input
-    review_text = st.text_area("Describe your symptoms or medication experience:")
+    review_text = st.text_area("Describe your symptoms:")
     
-    if st.button("Get Recommendation"):
+    if st.button("Predict Condition"):
         if review_text:
-            with st.spinner("Analyzing your input..."):
-                recommendation = predict_recommendation(model, review_text)
+            with st.spinner("Analyzing your symptoms..."):
+                prediction = predict_condition(model, review_text)
                 
-                if recommendation:
-                    st.subheader("Recommendation")
+                if prediction:
+                    st.subheader("Predicted Condition")
                     
-                    # Display recommendation
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Likely Condition", recommendation['condition'])
-                    with col2:
-                        st.metric("Recommended Medication", recommendation['drug'])
-                    with col3:
-                        st.metric("Expected Effectiveness", recommendation['rating_category'])
-                    
-                    # Show similar reviews from dataset
-                    st.subheader("Similar Patient Experiences")
-                    similar_reviews = data[
-                        (data['condition'] == recommendation['condition']) & 
-                        (data['drugName'] == recommendation['drug'])
-                    ].head(3)
-                    
-                    if not similar_reviews.empty:
-                        for _, row in similar_reviews.iterrows():
-                            st.markdown(f"""
-                            <div style="background-color:#f0f2f6; padding:10px; border-radius:5px; margin-bottom:10px;">
-                            <b>Rating {row['rating']}/10:</b> {row['review']}
-                            </div>
-                            """, unsafe_allow_html=True)
+                    if prediction == 'None':
+                        st.warning("The described symptoms don't match our target conditions (Depression, Diabetes Type 2, High Blood Pressure)")
                     else:
-                        st.warning("No similar experiences found in our database")
+                        st.success(f"Predicted condition: {prediction}")
+                        
+                        # Show relevant medications
+                        st.subheader("Common Medications for this Condition")
+                        meds = data[data['condition'] == prediction]['drugName'].unique()
+                        for med in meds[:5]:  # Show top 5 medications
+                            avg_rating = data[
+                                (data['condition'] == prediction) & 
+                                (data['drugName'] == med)
+                            ]['rating'].mean()
+                            st.write(f"- {med} (Average rating: {avg_rating:.1f}/10)")
                 else:
-                    st.error("Could not generate recommendation")
+                    st.error("Could not generate prediction")
         else:
-            st.warning("Please describe your symptoms or experience")
+            st.warning("Please describe your symptoms")
 
 if __name__ == "__main__":
     main()

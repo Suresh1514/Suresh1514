@@ -22,17 +22,26 @@ nltk.download('omw-1.4')
 @st.cache_data
 def load_data():
     try:
-        # Try to load the actual dataset first with explicit engine specification
-        df = pd.read_csv('drugsCom_raw.xlsx', engine='openpyxl')
+        # First try as Excel file
+        try:
+            df = pd.read_excel('drugsCom_raw.xlsx', engine='openpyxl')
+        except:
+            # If Excel fails, try as CSV
+            try:
+                df = pd.read_csv('drugsCom_raw.xlsx')  # Try as CSV even with .xlsx extension
+            except:
+                st.warning("File is neither valid Excel nor CSV. Using sample data.")
+                return create_sample_data()
         
-        # Check if we have the required columns
+        # Check required columns
         required_columns = ['DrugName', 'condition', 'review', 'rating', 'date', 'usefulCount']
         if not all(col in df.columns for col in required_columns):
-            st.warning("Dataset is missing required columns. Using sample data instead.")
+            st.warning("Dataset missing required columns. Using sample data.")
             return create_sample_data()
+            
         return df
     except Exception as e:
-        st.warning(f"Could not load dataset: {str(e)}. Using sample data instead.")
+        st.warning(f"Error loading dataset: {str(e)}. Using sample data.")
         return create_sample_data()
 
 def create_sample_data():

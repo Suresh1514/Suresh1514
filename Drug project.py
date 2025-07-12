@@ -23,7 +23,7 @@ nltk.download('omw-1.4')
 def load_data():
     try:
         # Try to load the actual dataset first with explicit engine specification
-        df = pd.read_excel('drugsCom_raw.xlsx', engine='openpyxl')
+        df = pd.read_csv('drugsCom_raw.xlsx', engine='openpyxl')
         
         # Check if we have the required columns
         required_columns = ['DrugName', 'condition', 'review', 'rating', 'date', 'usefulCount']

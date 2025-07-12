@@ -1,3 +1,4 @@
+# Import required libraries
 import pandas as pd
 import numpy as np
 import re
@@ -8,46 +9,29 @@ from nltk.stem import WordNetLemmatizer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, accuracy_score
-from sklearn.multiclass import OneVsRestClassifier
-from sklearn.preprocessing import MultiLabelBinarizer
 import pickle
 import streamlit as st
+import os
+from io import BytesIO
 
 # Download NLTK resources
 nltk.download('stopwords')
 nltk.download('wordnet')
 nltk.download('omw-1.4')
 
-@st.cache_data
-def load_data():
-    try:
-        # First try as Excel file
-        try:
-            df = pd.read_excel('drugsCom_raw.xlsx', engine='openpyxl')
-        except:
-            # If Excel fails, try as CSV
-            try:
-                df = pd.read_csv('drugsCom_raw.xlsx')  # Try as CSV even with .xlsx extension
-            except:
-                st.warning("File is neither valid Excel nor CSV. Using sample data.")
-                return create_sample_data()
-        
-        # Check required columns
-        required_columns = ['DrugName', 'condition', 'review', 'rating', 'date', 'usefulCount']
-        if not all(col in df.columns for col in required_columns):
-            st.warning("Dataset missing required columns. Using sample data.")
-            return create_sample_data()
-            
-        return df
-    except Exception as e:
-        st.warning(f"Error loading dataset: {str(e)}. Using sample data.")
-        return create_sample_data()
+# Set page config for Streamlit
+st.set_page_config(
+    page_title="Drug Recommendation System",
+    page_icon="💊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
+# Create sample data function
 def create_sample_data():
-    # Fallback sample data
+    """Create sample data as fallback"""
     data = {
-        'DrugName': ['Prozac', 'Lisinopril', 'Metformin', 'Prozac', 'Metformin'],
+        'drugName': ['Prozac', 'Lisinopril', 'Metformin', 'Prozac', 'Metformin'],
         'condition': ['Depression', 'High Blood Pressure', 'Diabetes, Type 2', 'Depression', 'Diabetes, Type 2'],
         'review': [
             'This medication helped with my depression symptoms',
@@ -62,129 +46,220 @@ def create_sample_data():
     }
     return pd.DataFrame(data)
 
-df = load_data()
-
-
-
-# Preprocessing functions
-def preprocess_text(text):
-    # Convert to lowercase
-    text = text.lower()
-    # Remove punctuation
-    text = re.sub(f'[{re.escape(string.punctuation)}]', '', text)
-    # Remove numbers
-    text = re.sub(r'\d+', '', text)
-    # Remove extra whitespace
-    text = ' '.join(text.split())
-    return text
-
-def remove_stopwords(text):
-    stop_words = set(stopwords.words('english'))
-    words = text.split()
-    filtered_words = [word for word in words if word not in stop_words]
-    return ' '.join(filtered_words)
-
-def lemmatize_text(text):
-    lemmatizer = WordNetLemmatizer()
-    words = text.split()
-    lemmatized_words = [lemmatizer.lemmatize(word) for word in words]
-    return ' '.join(lemmatized_words)
-
-# Apply preprocessing
-def apply_preprocessing(df):
-    df['cleaned_review'] = df['review'].apply(preprocess_text)
-    df['cleaned_review'] = df['cleaned_review'].apply(remove_stopwords)
-    df['cleaned_review'] = df['cleaned_review'].apply(lemmatize_text)
+# Data loading function with multiple fallbacks
+@st.cache_data
+def load_data(uploaded_file=None):
+    """Load data with multiple fallback options"""
+    df = None
+    
+    # If user uploaded a file
+    if uploaded_file is not None:
+        try:
+            # Try to read as Excel
+            try:
+                df = pd.read_excel(uploaded_file, engine='openpyxl')
+            except:
+                # Try to read as CSV
+                try:
+                    uploaded_file.seek(0)  # Reset file pointer
+                    df = pd.read_csv(uploaded_file)
+                except:
+                    # Try to read as TSV
+                    try:
+                        uploaded_file.seek(0)
+                        df = pd.read_csv(uploaded_file, sep='\t')
+                    except Exception as e:
+                        st.error(f"Could not read uploaded file: {str(e)}")
+        
+        except Exception as e:
+            st.error(f"Error processing uploaded file: {str(e)}")
+    
+    # If no file uploaded or loading failed, use sample data
+    if df is None:
+        st.info("Using sample data as no valid file was provided or could be loaded.")
+        return create_sample_data()
+    
+    # Standardize column names (handle different capitalization/spacing)
+    column_mapping = {
+        'drugname': 'drugName',
+        'drug_name': 'drugName',
+        'conditions': 'condition',
+        'ratings': 'rating',
+        'usefulcount': 'usefulCount'
+    }
+    
+    df.columns = [column_mapping.get(col.lower(), col) for col in df.columns]
+    
+    # Verify required columns
+    required_columns = ['drugName', 'condition', 'review', 'rating', 'usefulCount']
+    missing_cols = [col for col in required_columns if col not in df.columns]
+    
+    if missing_cols:
+        st.warning(f"Missing columns: {', '.join(missing_cols)}. Using sample data instead.")
+        return create_sample_data()
+    
     return df
 
-df = apply_preprocessing(df)
+# Text preprocessing functions
+def preprocess_text(text):
+    """Clean and preprocess text"""
+    text = str(text).lower()
+    text = re.sub(f'[{re.escape(string.punctuation)}]', '', text)
+    text = re.sub(r'\d+', '', text)
+    return ' '.join(text.split())
 
-# Focus only on the three conditions
-target_conditions = ['Depression', 'High Blood Pressure', 'Diabetes, Type 2']
-df = df[df['condition'].isin(target_conditions)]
+def remove_stopwords(text):
+    """Remove stopwords from text"""
+    stop_words = set(stopwords.words('english'))
+    return ' '.join([word for word in text.split() if word not in stop_words])
 
-# Prepare data for model training
-X = df['cleaned_review']
-y = df['condition']
+def lemmatize_text(text):
+    """Lemmatize words in text"""
+    lemmatizer = WordNetLemmatizer()
+    return ' '.join([lemmatizer.lemmatize(word) for word in text.split()])
 
-# Vectorize text data
-vectorizer = TfidfVectorizer(max_features=5000)
-X_vectorized = vectorizer.fit_transform(X)
-
-# Train-test split
-X_train, X_test, y_train, y_test = train_test_split(X_vectorized, y, test_size=0.2, random_state=42)
-
-# Train model
-model = LogisticRegression(max_iter=1000, multi_class='multinomial')
-model.fit(X_train, y_train)
-
-# Evaluate model
-y_pred = model.predict(X_test)
-print("Model Accuracy:", accuracy_score(y_test, y_pred))
-print(classification_report(y_test, y_pred))
-
-# Function to recommend drugs based on condition
-def recommend_drugs(condition):
-    condition_df = df[df['condition'] == condition]
-    if condition_df.empty:
-        return "No drugs found for this condition"
+# Train model function
+def train_model(df):
+    """Train and return the classification model"""
+    # Focus on target conditions
+    target_conditions = ['Depression', 'High Blood Pressure', 'Diabetes, Type 2']
+    df = df[df['condition'].isin(target_conditions)]
     
-    # Get top 3 drugs by average rating (with at least 5 usefulCount)
-    recommended_drugs = condition_df.groupby('DrugName').agg({
-        'rating': 'mean',
-        'usefulCount': 'sum'
-    }).reset_index()
+    # Apply preprocessing
+    df['cleaned_review'] = df['review'].apply(preprocess_text).apply(remove_stopwords).apply(lemmatize_text)
     
-    recommended_drugs = recommended_drugs[recommended_drugs['usefulCount'] >= 5]
-    recommended_drugs = recommended_drugs.sort_values(by=['rating', 'usefulCount'], ascending=[False, False])
+    # Prepare data for modeling
+    X = df['cleaned_review']
+    y = df['condition']
     
-    if len(recommended_drugs) > 3:
-        recommended_drugs = recommended_drugs.head(3)
+    # Vectorize text data
+    vectorizer = TfidfVectorizer(max_features=5000)
+    X_vec = vectorizer.fit_transform(X)
     
-    return recommended_drugs[['DrugName', 'rating']]
+    # Train-test split
+    X_train, X_test, y_train, y_test = train_test_split(X_vec, y, test_size=0.2, random_state=42)
+    
+    # Train model
+    model = LogisticRegression(max_iter=1000, multi_class='multinomial')
+    model.fit(X_train, y_train)
+    
+    return model, vectorizer, df
 
-# Save model and vectorizer for deployment
-pickle.dump(model, open('drug_classifier_model.pkl', 'wb'))
-pickle.dump(vectorizer, open('tfidf_vectorizer.pkl', 'wb'))
-
-# Streamlit App
+# Main application function
 def main():
-    st.title("Drug Recommendation System")
-    st.write("This system analyzes patient reviews to classify conditions and recommend appropriate drugs.")
+    st.title("💊 Drug Recommendation System")
+    st.markdown("""
+    This system analyzes patient reviews to:
+    - Classify medical conditions
+    - Recommend appropriate medications
+    """)
     
-    # User input
-    user_review = st.text_area("Enter your medical review or symptoms:", height=150)
+    # Sidebar for file upload and info
+    with st.sidebar:
+        st.header("Upload Your Data")
+        uploaded_file = st.file_uploader(
+            "Upload drug reviews (Excel, CSV, or TSV)",
+            type=['xlsx', 'csv', 'tsv'],
+            help="File should contain columns: drugName, condition, review, rating, usefulCount"
+        )
+        
+        st.markdown("---")
+        st.markdown("""
+        **Target Conditions:**
+        - Depression
+        - High Blood Pressure
+        - Diabetes, Type 2
+        """)
+        
+        st.markdown("---")
+        st.markdown("""
+        **How it works:**
+        1. Enter your symptoms or medication experience
+        2. System analyzes the text
+        3. Predicts the most likely condition
+        4. Recommends top medications
+        """)
     
-    if st.button("Analyze and Recommend"):
+    # Load data
+    df = load_data(uploaded_file)
+    
+    # Train model (cached for performance)
+    @st.cache_resource
+    def get_model():
+        return train_model(df)
+    
+    model, vectorizer, processed_df = get_model()
+    
+    # Main interface
+    st.subheader("Enter Your Symptoms or Medication Experience")
+    user_review = st.text_area(
+        "Describe how you're feeling or your experience with a medication:",
+        height=150,
+        placeholder="e.g., 'I've been feeling very down and hopeless lately...'"
+    )
+    
+    if st.button("Get Recommendation", type="primary"):
         if user_review:
-            # Preprocess the input
-            cleaned_review = preprocess_text(user_review)
-            cleaned_review = remove_stopwords(cleaned_review)
-            cleaned_review = lemmatize_text(cleaned_review)
-            
-            # Vectorize the input
-            review_vectorized = vectorizer.transform([cleaned_review])
-            
-            # Predict condition
-            predicted_condition = model.predict(review_vectorized)[0]
-            
-            # Check if condition is one of our target conditions
-            if predicted_condition in target_conditions:
-                st.subheader(f"Predicted Condition: {predicted_condition}")
+            with st.spinner("Analyzing your input..."):
+                # Preprocess input
+                processed_input = lemmatize_text(remove_stopwords(preprocess_text(user_review)))
+                vec = vectorizer.transform([processed_input])
                 
-                # Get drug recommendations
-                recommendations = recommend_drugs(predicted_condition)
+                # Predict condition
+                prediction = model.predict(vec)[0]
                 
-                if isinstance(recommendations, str):
-                    st.write(recommendations)
+                st.markdown("---")
+                st.subheader("Analysis Results")
+                
+                if prediction in ['Depression', 'High Blood Pressure', 'Diabetes, Type 2']:
+                    # Display prediction
+                    condition_icons = {
+                        'Depression': '😔',
+                        'High Blood Pressure': '🩺',
+                        'Diabetes, Type 2': '🩸'
+                    }
+                    st.success(f"""
+                    **Predicted Condition:** {condition_icons[prediction]} {prediction}
+                    """)
+                    
+                    # Get top recommended drugs
+                    top_drugs = (
+                        processed_df[processed_df['condition'] == prediction]
+                        .groupby('drugName')
+                        .agg({'rating': 'mean', 'usefulCount': 'sum'})
+                        .sort_values(['rating', 'usefulCount'], ascending=False)
+                        .head(3)
+                    )
+                    
+                    if not top_drugs.empty:
+                        st.subheader("💊 Recommended Medications")
+                        
+                        cols = st.columns(3)
+                        for idx, (drug, row) in enumerate(top_drugs.iterrows()):
+                            with cols[idx]:
+                                st.metric(
+                                    label=drug,
+                                    value=f"{row['rating']:.1f} ★",
+                                    help=f"Based on {int(row['usefulCount'])} user ratings"
+                                )
+                                st.caption(f"Average rating from patient reviews")
+                    else:
+                        st.warning("No medication recommendations available for this condition")
                 else:
-                    st.subheader("Recommended Drugs:")
-                    for idx, row in recommendations.iterrows():
-                        st.write(f"- {row['DrugName']} (Average Rating: {row['rating']:.1f}/10)")
-            else:
-                st.write("The review doesn't match our target conditions (Depression, High Blood Pressure, Diabetes Type 2).")
+                    st.warning("""
+                    The system couldn't match your input to our target conditions.
+                    Please describe symptoms related to:
+                    - Depression
+                    - High Blood Pressure
+                    - Diabetes Type 2
+                    """)
         else:
-            st.warning("Please enter a medical review or symptoms.")
+            st.warning("Please describe your symptoms or medication experience")
+
+    # Show sample data if in debug mode
+    if st.sidebar.checkbox("Show sample data (debug)"):
+        st.subheader("Sample Data Preview")
+        st.dataframe(df.head())
 
 if __name__ == '__main__':
     main()

@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # Sample data with specific conditions
-def load_data():
+data = pd.read_excel("drugsCom_raw.xlsx")
     data = pd.DataFrame({
         'review': [
             "This helped with my depression and anxiety",

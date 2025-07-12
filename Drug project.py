@@ -73,7 +73,7 @@ def load_data():
                                 .str.lower()
                                 .str.strip()
                                 .map(condition_mapping)
-            
+                                )
             # Remove rows with None/mapped conditions
             data = data[data['condition'].isin(['Depression', 'Diabetes, Type 2', 'High Blood Pressure'])]
         else:

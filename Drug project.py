@@ -26,7 +26,8 @@ def load_data():
             try:
                 if os.path.exists(path):
                     st.info(f"Found file at: {path}")
-                    data = pd.read_excel(path)
+                    # Explicitly specify engine for Excel reading
+                    data = pd.read_excel(path, engine='openpyxl')
                     file_found = True
                     st.success("Successfully loaded dataset!")
                     break
@@ -50,7 +51,7 @@ def load_data():
                 ],
                 'drugName': ['Prozac', 'Lisinopril', 'Metformin', 'Zoloft', 'Amlodipine'],
                 'condition': ['Depression', 'High Blood Pressure', 'Diabetes, Type 2', 
-                            'Depression', 'High Blood Pressure'],
+                              'Depression', 'High Blood Pressure'],
                 'rating': [9, 7, 8, 3, 6]
             }
             return pd.DataFrame(sample_data)
@@ -73,7 +74,7 @@ def load_data():
                                 .str.lower()
                                 .str.strip()
                                 .map(condition_mapping)
-                                )
+            
             # Remove rows with None/mapped conditions
             data = data[data['condition'].isin(['Depression', 'Diabetes, Type 2', 'High Blood Pressure'])]
         else:

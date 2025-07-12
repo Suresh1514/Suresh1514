@@ -21,9 +21,23 @@ nltk.download('omw-1.4')
 
 # Load the dataset (replace with your actual dataset path)
 @st.cache_data
- return pd.read_excel('drugsCom_raw.xlsx')
-    # In a real scenario, you would load your actual dataset here
-    # For demonstration, creating a mock dataframe
+def load_data():
+    try:
+        # Try to load the actual dataset first
+        df = pd.read_excel('drugsCom_raw.xlsx')
+        
+        # Check if we have the required columns
+        required_columns = ['DrugName', 'condition', 'review', 'rating', 'date', 'usefulCount']
+        if not all(col in df.columns for col in required_columns):
+            st.warning("Dataset is missing required columns. Using sample data instead.")
+            return create_sample_data()
+        return df
+    except Exception as e:
+        st.warning(f"Could not load dataset: {str(e)}. Using sample data instead.")
+        return create_sample_data()
+
+def create_sample_data():
+    # Fallback sample data
     data = {
         'DrugName': ['Prozac', 'Lisinopril', 'Metformin', 'Prozac', 'Metformin'],
         'condition': ['Depression', 'High Blood Pressure', 'Diabetes, Type 2', 'Depression', 'Diabetes, Type 2'],
@@ -38,9 +52,12 @@ nltk.download('omw-1.4')
         'date': ['2020-01-01', '2020-02-01', '2020-03-01', '2020-04-01', '2020-05-01'],
         'usefulCount': [10, 15, 12, 3, 20]
     }
-    return pd.DataFrame()
+    return pd.DataFrame(data)
 
 df = load_data()
+
+# Rest of your code remains the same...
+[rest of your existing code continues...]
 
 # Preprocessing functions
 def preprocess_text(text):
